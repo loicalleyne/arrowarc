@@ -32,21 +32,9 @@ Go channels are a powerful concurrency primitive that enable safe and efficient 
 
 - **Decoupling Data Flow**: Channels decouple the production and consumption of data. Producers (such as data extraction routines) can send data to a channel as soon as it's ready, without needing to wait for consumers (such as data ingestion routines) to be available. This decoupling enhances resource utilization and throughput, allowing both sides to operate independently.
 
-- **Error Handling**: By returning a second channel specifically for errors (`<-chan error`), ArrowArc ensures clean and structured error handling. This approach allows any issues during data processing to be communicated back to the caller without interrupting the data flow.
+- **Error Handling**: By returning a second channel specifically for errors, ArrowArc ensures clean and structured error handling. This approach allows any issues during data processing to be communicated back to the caller without interrupting the data flow.
 
 - **Low Latency and High Throughput**: Go channels, in combination with goroutines, minimize the overhead associated with data transfer between system components. This leads to lower latency in data processing and higher overall throughput, enabling continuous and efficient data streaming.
-
-### Why This Interface?
-
-The interface `<-chan arrow.Record, <-chan error` was chosen for several key reasons:
-
-- **Simplicity**: This interface is straightforward and intuitive, making it easy for developers to work with. The dual-channel pattern clearly separates data from error handling, reducing complexity within the codebase.
-
-- **Flexibility**: The use of channels provides flexibility in data processing. Components can be composed in various ways, allowing for easy integration with different data sources, sinks, and processing pipelines.
-
-- **Scalability**: This pattern naturally scales with the number of goroutines and channels, enabling ArrowArc to handle large volumes of data without becoming a bottleneck. Whether dealing with small datasets or large-scale data integration tasks, this approach ensures consistent performance.
-
-- **Alignment with Go’s Strengths**: Go excels at managing concurrent workloads efficiently. By leveraging channels as the primary interface for data exchange, ArrowArc fully embraces Go’s concurrency model, ensuring that the platform can meet the demands of modern data processing with minimal overhead.
 
 ## Intent of the Architecture
 
