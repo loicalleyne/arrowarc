@@ -145,7 +145,7 @@ wg.Wait() // Wait for all sinks to finish processing
 
 ### ArrowArc Feature Matrix
 
-This matrix outlines the planned features of ArrowArc, including command line utilities, integrations, and cloud storage provider support. The status of each feature is indicated as follows:
+This tables below indicate the status of the planned features of ArrowArc, including command line utilities, integrations, and cloud storage provider support. The status of each feature is indicated as follows:
 
 - `✅` - Implemented
 - `🚧` - In Progress
@@ -181,7 +181,7 @@ This matrix outlines the planned features of ArrowArc, including command line ut
 
 | Provider                         | Extraction | Ingestion |
 |----------------------------------|------------|-----------|
-| **Google Cloud Storage (GCS)**   | ✅         | 🚧        |
+| **Google Cloud Storage (GCS)**   | ✅         | ✅        |
 | **Amazon S3**                    | ❌         | ❌        |
 | **Azure Blob Storage**           | ❌         | ❌        |
 | **Oracle Cloud Infrastructure**  | ❌         | ❌        |
@@ -192,9 +192,11 @@ This matrix outlines the planned features of ArrowArc, including command line ut
 |---------------|------------|-----------|
 | **Parquet**   | ✅         | ✅        |
 | **Avro**      | ❌         | ❌        |
-| **CSV**       | 🚧         | 🚧        |
-| **IPC**       | ❌         | ❌        |
+| **CSV**       | ✅         | ✅        |
+| **IPC**       | ✅         | ✅        |
 | **Iceberg**   | ❌         | ❌        |
+
+---
 
 ### Arrow Flight Note
 
@@ -203,8 +205,6 @@ Apache Arrow Flight is a groundbreaking initiative that introduces a high-perfor
 ArrowArc fully recognizes the potential of Arrow Flight and will support it as part of its broader data exchange capabilities. However, it’s important to note that Arrow Flight defines a wire protocol that needs to be implemented by database vendors. While Apache Arrow itself has firmly established its place in the data processing ecosystem, the adoption and longevity of Arrow Flight remain uncertain. The success of Arrow Flight largely depends on its adoption by database vendors and the broader data community.
 
 This uncertainty was a key motivator behind the creation of ArrowArc. ArrowArc seeks to provide a flexible and efficient data exchange platform that does not rely solely on the adoption of a specific protocol like Arrow Flight. Instead, ArrowArc focuses on speed, efficiency, and broad compatibility with existing systems, while embracing the full potential of the Apache Arrow ecosystem as it relates to data exchange. This approach ensures that organizations can optimize their data integration processes today, while remaining adaptable to future developments in the Arrow ecosystem.
-
-In essence, while ArrowArc will support Arrow Flight and embrace its potential, it also provides a more immediate and adaptable solution for data integration challenges, ensuring that organizations can achieve high performance and efficiency without being dependent on the future adoption of any one technology.
 
 ---
 
