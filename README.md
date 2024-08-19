@@ -96,8 +96,8 @@ func (s *GCSSink) WriteGCSArrowStream(ctx context.Context, records <-chan arrow.
 ArrowArc simplifies high-performance data synchronization, enabling tasks like rewriting a Parquet file with minimal code.
 
 ```go
-// Stream data from a Parquet file
-recordChan, errChan := GetParquetArrowStream(ctx, inFilePath, false, 1000000)
+// Stream data from a Parquet file using a memory map in 1,000,000 record batches
+recordChan, errChan := GetParquetArrowStream(ctx, inFilePath, true, 1000000)
 
 // Handle errors
 go func() {
@@ -143,6 +143,59 @@ wg.Wait() // Wait for all sinks to finish processing
 
 ---
 
+### ArrowArc Feature Matrix
+
+This matrix outlines the planned features of ArrowArc, including command line utilities, integrations, and cloud storage provider support. The status of each feature is indicated as follows:
+
+- `✅` - Implemented
+- `🚧` - In Progress
+- `❌` - Not Started
+
+### Features Overview
+
+#### Command Line Utilities
+
+| Utility             | Status       |
+|---------------------|--------------|
+| **Rewrite Parquet** | ✅           |
+| **Convert CSV**     | 🚧           |
+| **Sync Table**      | ❌           |
+
+---
+
+#### Integration Types
+
+##### 1. **Database Integrations**
+
+| Database        | Extraction | Ingestion |
+|-----------------|------------|-----------|
+| **PostgreSQL**  | ✅         | 🚧        |
+| **MySQL**       | 🚧         | ❌        |
+| **Oracle**      | ❌         | ❌        |
+| **BigQuery**    | ✅         | 🚧        |
+| **Snowflake**   | ❌         | ❌        |
+| **DuckDB**      | ✅         | ✅        |
+| **SQLite**   | ❌         | ❌        |
+
+##### 2. **Cloud Storage Integrations**
+
+| Provider                         | Extraction | Ingestion |
+|----------------------------------|------------|-----------|
+| **Google Cloud Storage (GCS)**   | ✅         | 🚧        |
+| **Amazon S3**                    | ❌         | ❌        |
+| **Azure Blob Storage**           | ❌         | ❌        |
+| **Oracle Cloud Infrastructure**  | ❌         | ❌        |
+
+##### 3. **Filesystem Formats**
+
+| Format        | Extraction | Ingestion |
+|---------------|------------|-----------|
+| **Parquet**   | ✅         | ✅        |
+| **Avro**      | ❌         | ❌        |
+| **CSV**       | 🚧         | 🚧        |
+| **IPC**       | ❌         | ❌        |
+| **Iceberg**   | ❌         | ❌        |
+
 ### Arrow Flight Note
 
 Apache Arrow Flight is a groundbreaking initiative that introduces a high-performance wire protocol designed for large-scale data transfers. It leverages the Apache Arrow in-memory columnar format to enable faster and more efficient data exchange between systems, particularly in the context of modern, distributed data environments. Arrow Flight's ability to reduce serialization and deserialization overhead makes it a compelling choice for real-time data operations and integration.
@@ -157,8 +210,8 @@ In essence, while ArrowArc will support Arrow Flight and embrace its potential, 
 
 ## :page_facing_up: License
 
-ArrowArc is bestowed upon the realm under the MIT License. Refer to the [LICENSE](./LICENSE) scroll for more details.
+Please see the [LICENSE](./LICENSE) for more details.
 
-## :bow_and_arrow: Author
+## Author
 
-Thomas F McGeehan V (<https://github.com/TFMV>)
+[Thomas F McGeehan V](https://github.com/TFMV)
