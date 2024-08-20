@@ -149,7 +149,6 @@ func (b *JSONBuilder) NewJSONArray() *JSONArray {
 	return b.NewExtensionArray().(*JSONArray)
 }
 
-// JSONArray is a simple array which is a Binary
 type JSONArray struct {
 	array.ExtensionArrayBase
 }
