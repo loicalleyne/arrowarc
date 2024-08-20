@@ -1,4 +1,4 @@
-![Alt text](assets/images/ArrowArcLogo.png)
+![Alt text](assets/images/ArrowArcLogo.jpg)
 
 **ArrowArc** is a high-performance data integration platform designed to challenge the status quo in big data processing. At its core, ArrowArc is built on the principle that **"small data is the new big data"**—a recognition that for the vast majority of use cases, traditional Big Data tools, including modern data warehouses like Snowflake or BigQuery, are not always necessary.
 
