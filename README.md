@@ -200,7 +200,3 @@ This uncertainty was a key motivator behind the creation of ArrowArc. ArrowArc s
 ## :page_facing_up: License
 
 Please see the [LICENSE](./LICENSE) for more details.
-
-## Author
-
-[Thomas F McGeehan V](https://github.com/TFMV)
