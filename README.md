@@ -145,6 +145,7 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 
 | Utility             | Status       |
 |---------------------|--------------|
+| **Extract and Ingest** | 🚧           |
 | **Rewrite Parquet** | ✅           |
 | **Convert CSV**     | 🚧           |
 | **Sync Table**      | ❌           |
@@ -172,7 +173,6 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **Google Cloud Storage (GCS)**   | ✅         | ✅        |
 | **Amazon S3**                    | ❌         | ❌        |
 | **Azure Blob Storage**           | ❌         | ❌        |
-| **Oracle Cloud Infrastructure**  | ❌         | ❌        |
 
 ##### 3. **Filesystem Formats**
 
@@ -181,6 +181,7 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **Parquet**   | ✅         | ✅        |
 | **Avro**      | ❌         | ❌        |
 | **CSV**       | ✅         | ✅        |
+| **JSON**      | ✅         | ✅        |
 | **IPC**       | ✅         | ✅        |
 | **Iceberg**   | ❌         | ❌        |
 
