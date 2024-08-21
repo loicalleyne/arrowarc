@@ -36,10 +36,11 @@ import (
 
 	weather "github.com/ArrowArc/ArrowArc/integrations/api/weather"
 	"github.com/ArrowArc/ArrowArc/pkg/common/config"
+	helper "github.com/ArrowArc/ArrowArc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestWeatherAPIStreamToDuckDB(t *testing.T) {
+func TestWeatherAPIStream(t *testing.T) {
 	cities := []config.City{
 		{Name: "New York", Latitude: 40.7128, Longitude: -74.0060},
 		{Name: "Tokyo", Latitude: 35.6895, Longitude: 139.6917},
@@ -51,25 +52,22 @@ func TestWeatherAPIStreamToDuckDB(t *testing.T) {
 
 	recordChan, errChan := weather.ReadWeatherAPIStream(ctx, cities)
 
-	var errs []error
-	done := make(chan struct{})
-
+	errs := make(chan error)
 	go func() {
 		for err := range errChan {
 			if err != nil {
-				errs = append(errs, err)
+				errs <- err
 			}
 		}
-		close(done)
+		close(errs)
 	}()
 
 	for record := range recordChan {
-		assert.NotNil(t, record)
+		assert.NotNil(t, record, "Record should not be nil")
+		helper.PrintRecordBatch(record)
 	}
 
-	<-done
-
-	for _, err := range errs {
-		assert.NoError(t, err)
+	for err := range errs {
+		assert.NoError(t, err, "Error should be nil when reading weather API stream")
 	}
 }
