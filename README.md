@@ -24,17 +24,11 @@ The core of ArrowArc is built around a common pattern for data extraction and in
 <-chan arrow.Record, <-chan error
 ```
 
+It is important to note that an ```Arrow.Record``` is a core data structure in Apache Arrow that encapsulates a collection of columnar data, organized as a record batch. It holds a fixed number of rows, where each row is composed of fields corresponding to columns in a table. The arrow.Record provides efficient in-memory representation, supporting zero-copy reads and enabling high-performance analytics and data processing by minimizing data movement and serialization overhead.
+
 ### Why Go Channels?
 
-Go channels are a powerful concurrency primitive that enable safe and efficient communication between goroutines. In the context of ArrowArc, channels provide a natural and elegant way to stream data (in the form of Apache Arrow `Record` objects) between different components of the system.
-
-- **Concurrency and Parallelism**: Go's concurrency model allows multiple tasks to run concurrently, facilitating efficient parallel data processing. By using channels, ArrowArc can seamlessly manage data flow between producer and consumer goroutines, ensuring that data is processed as quickly as it becomes available.
-
-- **Decoupling Data Flow**: Channels decouple the production and consumption of data. Producers (such as data extraction routines) can send data to a channel as soon as it's ready, without needing to wait for consumers (such as data ingestion routines) to be available. This decoupling enhances resource utilization and throughput, allowing both sides to operate independently.
-
-- **Error Handling**: By returning a second channel specifically for errors, ArrowArc ensures clean and structured error handling. This approach allows any issues during data processing to be communicated back to the caller without interrupting the data flow.
-
-- **Low Latency and High Throughput**: Go channels, in combination with goroutines, minimize the overhead associated with data transfer between system components. This leads to lower latency in data processing and higher overall throughput, enabling continuous and efficient data streaming.
+Go channels are a powerful concurrency primitive that enable safe and efficient communication between goroutines. In the context of ArrowArc, channels provide a natural and elegant way to stream data (in the form of Apache `Arrow.Record` objects) between different components of the system.
 
 ## Intent of the Architecture
 
