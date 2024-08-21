@@ -35,8 +35,7 @@ import (
 	"fmt"
 	"net/http"
 
-	xtypes "github.com/ArrowArc/ArrowArc/internal/dbarrow/types"
-	"github.com/ArrowArc/ArrowArc/pkg/common/config"
+	config "github.com/ArrowArc/ArrowArc/pkg/common/config"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
@@ -46,12 +45,20 @@ func ReadWeatherAPIStream(ctx context.Context, cities []config.City) (<-chan arr
 	recordChan := make(chan arrow.Record)
 	errChan := make(chan error, 1)
 
+	var totalRowCount int64
+
 	go func() {
 		defer close(recordChan)
 		defer close(errChan)
 
 		pool := memory.NewGoAllocator()
-		schema := config.OpenMeteoSchema
+
+		schema := arrow.NewSchema([]arrow.Field{
+			{Name: "city", Type: arrow.BinaryTypes.String},
+			{Name: "latitude", Type: arrow.PrimitiveTypes.Float64},
+			{Name: "longitude", Type: arrow.PrimitiveTypes.Float64},
+			{Name: "temperature", Type: arrow.PrimitiveTypes.Float64},
+		}, nil)
 
 		for _, city := range cities {
 			select {
@@ -61,57 +68,56 @@ func ReadWeatherAPIStream(ctx context.Context, cities []config.City) (<-chan arr
 			default:
 			}
 
-			temp, err := fetchWeatherData(ctx, city.Latitude, city.Longitude)
+			jsonData, err := fetchWeatherData(ctx, city.Latitude, city.Longitude)
 			if err != nil {
 				errChan <- err
 				return
 			}
 
+			currentWeather := jsonData["current_weather"].(map[string]interface{})
+			temperature := currentWeather["temperature"].(float64)
+
 			bldr := array.NewRecordBuilder(pool, schema)
 			defer bldr.Release()
 
 			bldr.Field(0).(*array.StringBuilder).Append(city.Name)
+			bldr.Field(1).(*array.Float64Builder).Append(city.Latitude)
+			bldr.Field(2).(*array.Float64Builder).Append(city.Longitude)
+			bldr.Field(3).(*array.Float64Builder).Append(temperature)
 
-			// Use the JSONBuilder since the schema defines the temperature as JSON
-			jsonBuilder := bldr.Field(1).(*xtypes.JSONBuilder)
-			jsonData := map[string]float64{"temperature": temp}
-			jsonBuilder.Append(jsonData)
+			record := bldr.NewRecord()
+			recordChan <- record
 
-			rec := bldr.NewRecord()
-			recordChan <- rec
-			rec.Release()
+			totalRowCount += record.NumRows()
+			record.Release()
 		}
 	}()
 
 	return recordChan, errChan
 }
 
-func fetchWeatherData(ctx context.Context, latitude, longitude float64) (float64, error) {
+func fetchWeatherData(ctx context.Context, latitude, longitude float64) (map[string]interface{}, error) {
 	url := fmt.Sprintf("%s?latitude=%.4f&longitude=%.4f&hourly=temperature_2m&current_weather=true", config.OpenMeteoAPIURL, latitude, longitude)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("failed to call Open-Meteo API: %w", err)
+		return nil, fmt.Errorf("failed to call Open-Meteo API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("Open-Meteo API error: %s", resp.Status)
+		return nil, fmt.Errorf("Open-Meteo API error: %s", resp.Status)
 	}
 
-	var result struct {
-		CurrentWeather struct {
-			Temperature float64 `json:"temperature"`
-		} `json:"current_weather"`
-	}
+	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, fmt.Errorf("failed to decode API response: %w", err)
+		return nil, fmt.Errorf("failed to decode API response: %w", err)
 	}
 
-	return result.CurrentWeather.Temperature, nil
+	return result, nil
 }
