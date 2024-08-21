@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package file
+package integrations
 
 import (
 	"context"
