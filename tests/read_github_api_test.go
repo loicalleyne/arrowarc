@@ -31,6 +31,7 @@ package test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -42,12 +43,21 @@ import (
 func TestGitHubRepoAPIStream(t *testing.T) {
 	t.Parallel() // Parallelize the top-level test
 
+	// List of repositories to fetch data for
 	repos := []string{
 		"torvalds/linux",
 		"apple/swift",
 		"golang/go",
-		"tfmv/dbX",
+		"tfmv/ArrowArc",
 	}
+
+	// Retrieve the GitHub OAuth token from the environment variable
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		t.Fatal("GITHUB_TOKEN environment variable is not set")
+	}
+
+	client := github.NewGitHubClient(context.Background(), githubToken)
 
 	tests := []struct {
 		repos       []string
@@ -67,7 +77,7 @@ func TestGitHubRepoAPIStream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 
-			recordChan, errChan := github.ReadGitHubRepoAPIStream(ctx, test.repos)
+			recordChan, errChan := github.ReadGitHubRepoAPIStream(ctx, test.repos, client)
 
 			errs := make(chan error)
 			go func() {

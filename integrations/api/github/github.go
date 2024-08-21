@@ -30,36 +30,26 @@
 package github
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
+	"strings"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/google/go-github/v64/github"
+	"golang.org/x/oauth2"
 )
 
-type OwnerInfo struct {
-	Login string `json:"login"`
-}
-
-type RepoInfo struct {
-	Name        string    `json:"name"`
-	Owner       OwnerInfo `json:"owner"`
-	Description string    `json:"description"`
-	Stars       int       `json:"stargazers_count"`
-	Forks       int       `json:"forks_count"`
-	Language    string    `json:"language"`
-}
-
-func ReadGitHubRepoAPIStream(ctx context.Context, repos []string) (<-chan arrow.Record, <-chan error) {
+func ReadGitHubRepoAPIStream(ctx context.Context, repos []string, client *github.Client) (<-chan arrow.Record, <-chan error) {
 	recordChan := make(chan arrow.Record)
 	errChan := make(chan error, 1)
 
 	go func() {
 		defer close(recordChan)
 		defer close(errChan)
+
+		allocator := memory.NewGoAllocator()
 
 		schema := arrow.NewSchema([]arrow.Field{
 			{Name: "name", Type: arrow.BinaryTypes.String},
@@ -78,77 +68,51 @@ func ReadGitHubRepoAPIStream(ctx context.Context, repos []string) (<-chan arrow.
 			default:
 			}
 
-			repoInfo, err := fetchGitHubRepoData(ctx, repo)
+			repoInfo, err := fetchGitHubRepoData(ctx, repo, client)
 			if err != nil {
 				errChan <- err
 				return
 			}
+			b := array.NewRecordBuilder(allocator, schema)
+			defer b.Release()
 
-			// Flatten the nested owner structure to match the Arrow schema
-			repoData := map[string]interface{}{
-				"name":        repoInfo.Name,
-				"owner":       repoInfo.Owner.Login,
-				"description": repoInfo.Description,
-				"stars":       repoInfo.Stars,
-				"forks":       repoInfo.Forks,
-				"language":    repoInfo.Language,
-			}
+			b.Field(0).(*array.StringBuilder).Append(repoInfo.GetName())
+			b.Field(1).(*array.StringBuilder).Append(repoInfo.GetOwner().GetLogin())
+			b.Field(2).(*array.StringBuilder).Append(repoInfo.GetDescription())
+			b.Field(3).(*array.Int32Builder).Append(int32(repoInfo.GetStargazersCount()))
+			b.Field(4).(*array.Int32Builder).Append(int32(repoInfo.GetForksCount()))
+			b.Field(5).(*array.StringBuilder).Append(repoInfo.GetLanguage())
 
-			jsonDataBytes, err := json.Marshal(repoData)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			jsonReader := array.NewJSONReader(bytes.NewReader(jsonDataBytes), schema)
-			if jsonReader == nil {
-				errChan <- fmt.Errorf("failed to create JSON reader")
-				return
-			}
-			defer jsonReader.Release()
-
-			for jsonReader.Next() {
-				record := jsonReader.Record()
-				if record == nil {
-					continue
-				}
-
-				record.Retain()
-				recordChan <- record
-			}
-
-			if err := jsonReader.Err(); err != nil {
-				errChan <- err
-				return
-			}
+			record := b.NewRecord()
+			recordChan <- record
 		}
 	}()
 
 	return recordChan, errChan
 }
 
-func fetchGitHubRepoData(ctx context.Context, repo string) (*RepoInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s", repo)
+func fetchGitHubRepoData(ctx context.Context, repo string, client *github.Client) (*github.Repository, error) {
+	ownerRepo := parseRepo(repo)
+	if len(ownerRepo) != 2 {
+		return nil, fmt.Errorf("invalid repo format: %s, expected 'owner/repo'", repo)
+	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	repoInfo, _, err := client.Repositories.Get(ctx, ownerRepo[0], ownerRepo[1])
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to fetch repository information: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to call GitHub API: %w", err)
-	}
-	defer resp.Body.Close()
+	return repoInfo, nil
+}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API error: %s", resp.Status)
-	}
+func parseRepo(repo string) []string {
+	return strings.Split(repo, "/")
+}
 
-	var repoInfo RepoInfo
-	if err := json.NewDecoder(resp.Body).Decode(&repoInfo); err != nil {
-		return nil, fmt.Errorf("failed to decode API response: %w", err)
-	}
-
-	return &repoInfo, nil
+func NewGitHubClient(ctx context.Context, token string) *github.Client {
+	ts := oauth2.StaticTokenSource(
+		&oauth2.Token{AccessToken: token},
+	)
+	tc := oauth2.NewClient(ctx, ts)
+	return github.NewClient(tc)
 }
