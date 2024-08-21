@@ -106,6 +106,11 @@ func WriteCSVFileStream(ctx context.Context, filePath string, schema *arrow.Sche
 		}
 		defer file.Close()
 
+		// Initialize a no-op strings.Replacer if nil
+		if stringsReplacer == nil {
+			stringsReplacer = strings.NewReplacer()
+		}
+
 		writer := csv.NewWriter(file, schema,
 			csv.WithComma(delimiter),
 			csv.WithHeader(includeHeader),
