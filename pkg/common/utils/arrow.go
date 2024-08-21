@@ -33,6 +33,7 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 )
 
@@ -42,8 +43,23 @@ func PrintRecordBatch(record arrow.Record) error {
 	fmt.Printf("Record batch with %d rows and %d columns\n", numRows, numCols)
 
 	for i := 0; i < numCols; i++ {
-		fmt.Printf("Column %d: %s\n", i, record.Schema().Field(i).Name)
+		fmt.Printf("Column %d: %s, Type: %s\n", i, record.Schema().Field(i).Name, record.Schema().Field(i).Type)
 	}
+
+	for rowIndex := 0; rowIndex < numRows; rowIndex++ {
+		for colIndex := 0; colIndex < numCols; colIndex++ {
+			column := record.Column(colIndex)
+			switch col := column.(type) {
+			case *array.String:
+				fmt.Printf("Row %d, Column %d: %s\n", rowIndex, colIndex, col.Value(rowIndex))
+			case *array.Float64:
+				fmt.Printf("Row %d, Column %d: %.2f\n", rowIndex, colIndex, col.Value(rowIndex))
+			default:
+				fmt.Printf("Row %d, Column %d: Unknown type\n", rowIndex, colIndex)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -58,4 +74,25 @@ func IpcReaderToChannel(reader *ipc.Reader) <-chan arrow.Record {
 	}()
 
 	return recordChan
+}
+
+func ArrowRecordToString(record arrow.Record) string {
+	var result string
+	for i := 0; i < int(record.NumRows()); i++ {
+		for j := 0; j < int(record.NumCols()); j++ {
+			column := record.Column(j)
+			switch col := column.(type) {
+			case *array.String:
+				result += fmt.Sprintf("%s ", col.Value(i))
+			case *array.Float64:
+				result += fmt.Sprintf("%.2f ", col.Value(i))
+			default:
+				result += "Unknown type "
+			}
+		}
+		if i < int(record.NumRows())-1 {
+			result += "\n" // Add a newline after each row except the last one
+		}
+	}
+	return result
 }
