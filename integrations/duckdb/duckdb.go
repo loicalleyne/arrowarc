@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package duckdb
+package integrations
 
 import (
 	"bytes"
@@ -130,8 +130,20 @@ func WriteDuckDBStream(ctx context.Context, conn adbc.Connection, tableName stri
 			errChan <- fmt.Errorf("failed to set ingest target table: %w", err)
 			return
 		}
+		// Create the table if it doesn't exist
+		if _, err := stmt.ExecuteUpdate(ctx); err != nil {
+			errChan <- fmt.Errorf("failed to create table: %w", err)
+			return
+		}
 
 		for record := range recordChan {
+			if record.NumRows() == 0 {
+				errChan <- fmt.Errorf("received record with no rows")
+				continue
+			}
+
+			fmt.Printf("Writing record with schema: %v\n", record.Schema())
+
 			// Create a temporary in-memory IPC stream from the record
 			var buf bytes.Buffer
 			writer := ipc.NewWriter(&buf, ipc.WithSchema(record.Schema()))
