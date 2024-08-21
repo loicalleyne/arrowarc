@@ -28,7 +28,6 @@ cmd/*.parquet
 
 scratch/
 tests/
-pkg/common/config/
 .venv/
 assets/docs/
 assets/.DS_Store
