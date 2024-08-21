@@ -43,7 +43,42 @@ import (
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
 )
 
-func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool, chunkSize int64) (<-chan arrow.Record, <-chan error) {
+type ParquetWriteOptions struct {
+	Compression        compress.Compression
+	MaxRowGroupLength  int64
+	AllowTruncatedRows bool
+	Buffered           bool
+	WriterAllocator    memory.Allocator
+	ArrowWriterProps   pqarrow.ArrowWriterProperties
+	ParquetWriterProps *parquet.WriterProperties
+}
+
+func NewDefaultParquetWriteOptions() *ParquetWriteOptions {
+	mem := memory.NewGoAllocator()
+	return &ParquetWriteOptions{
+		Compression:        compress.Codecs.Snappy,
+		MaxRowGroupLength:  128 * 1024 * 1024, // 128MB by default
+		AllowTruncatedRows: false,
+		Buffered:           false,
+		WriterAllocator:    mem,
+		ArrowWriterProps:   pqarrow.DefaultWriterProps(),
+		ParquetWriterProps: parquet.NewWriterProperties(
+			parquet.WithAllocator(mem),
+			parquet.WithCompression(compress.Codecs.Snappy),
+			parquet.WithMaxRowGroupLength(128*1024*1024), // 128MB by default
+		),
+	}
+}
+
+func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool) (<-chan arrow.Record, <-chan error) {
+	if chunkSize == 0 {
+		chunkSize = 1024 // Default chunk size
+	}
+
+	if !parallel {
+		parallel = true // Default to parallel true
+	}
+
 	recordChan := make(chan arrow.Record)
 	errChan := make(chan error, 1)
 
@@ -60,17 +95,43 @@ func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool,
 		defer parquetRdr.Close()
 		fmt.Println("Successfully opened Parquet file")
 
-		// Create a Parquet to Arrow file reader
-		arrowRdr, err := pqarrow.NewFileReader(parquetRdr, pqarrow.ArrowReadProperties{BatchSize: chunkSize, Parallel: true}, memory.DefaultAllocator)
+		arrowReadProps := pqarrow.ArrowReadProperties{
+			BatchSize: chunkSize,
+			Parallel:  parallel,
+		}
+
+		arrowRdr, err := pqarrow.NewFileReader(parquetRdr, arrowReadProps, memory.DefaultAllocator)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to create Arrow file reader: %w", err)
 			return
 		}
 
-		fmt.Println("Successfully created Arrow file reader")
+		schema, err := arrowRdr.Schema()
+		if err != nil {
+			errChan <- fmt.Errorf("failed to get schema: %w", err)
+			return
+		}
 
-		// Get a RecordReader for all columns and row groups
-		recordReader, err := arrowRdr.GetRecordReader(ctx, nil, nil)
+		// If no specific columns are requested, include all columns
+		var colIndices []int
+		if len(columns) == 0 {
+			colIndices = nil
+		} else {
+			for i, field := range schema.Fields() {
+				for _, colName := range columns {
+					if field.Name == colName {
+						colIndices = append(colIndices, i)
+					}
+				}
+			}
+		}
+
+		// If no specific row groups are requested, set to nil to read all row groups
+		if len(rowGroups) == 0 {
+			rowGroups = nil
+		}
+
+		recordReader, err := arrowRdr.GetRecordReader(ctx, colIndices, rowGroups)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to get record reader: %w", err)
 			return
@@ -112,11 +173,9 @@ func WriteParquetFileStream(ctx context.Context, filePath string, recordChan <-c
 	go func() {
 		defer close(errChan)
 
-		mem := memory.NewGoAllocator()
 		var schema *arrow.Schema
 		var parquetWriter *pqarrow.FileWriter
 
-		// Open a file for writing the Parquet data
 		file, err := os.Create(filePath)
 		if err != nil {
 			errChan <- fmt.Errorf("failed to create file: %w", err)
@@ -126,7 +185,10 @@ func WriteParquetFileStream(ctx context.Context, filePath string, recordChan <-c
 
 		defer func() {
 			if parquetWriter != nil {
-				parquetWriter.Close()
+				err := parquetWriter.Close()
+				if err != nil {
+					errChan <- fmt.Errorf("failed to close Parquet writer: %w", err)
+				}
 			}
 		}()
 
@@ -143,19 +205,13 @@ func WriteParquetFileStream(ctx context.Context, filePath string, recordChan <-c
 
 				if schema == nil {
 					schema = record.Schema()
-					writerProps := parquet.NewWriterProperties(
-						parquet.WithAllocator(mem),
-						parquet.WithCompression(compress.Codecs.Snappy),
-					)
 
-					// Create the Parquet writer with the file and schema
-					parquetWriter, err = pqarrow.NewFileWriter(schema, file, writerProps, pqarrow.DefaultWriterProps())
+					parquetWriter, err = pqarrow.NewFileWriter(schema, file, NewDefaultParquetWriteOptions().ParquetWriterProps, pqarrow.DefaultWriterProps())
 					if err != nil {
 						errChan <- fmt.Errorf("failed to create Parquet writer: %w", err)
 						return
 					}
 				}
-
 				if err := parquetWriter.Write(record); err != nil {
 					errChan <- fmt.Errorf("failed to write record to Parquet: %w", err)
 					return
