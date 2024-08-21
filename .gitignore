@@ -27,7 +27,6 @@ assets/docs/
 cmd/*.parquet
 
 scratch/
-tests/
 .venv/
 assets/docs/
 assets/.DS_Store

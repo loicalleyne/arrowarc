@@ -30,6 +30,7 @@
 package integrations
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -38,20 +39,15 @@ import (
 	config "github.com/ArrowArc/ArrowArc/pkg/common/config"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
 )
 
 func ReadWeatherAPIStream(ctx context.Context, cities []config.City) (<-chan arrow.Record, <-chan error) {
 	recordChan := make(chan arrow.Record)
 	errChan := make(chan error, 1)
 
-	var totalRowCount int64
-
 	go func() {
 		defer close(recordChan)
 		defer close(errChan)
-
-		pool := memory.NewGoAllocator()
 
 		schema := arrow.NewSchema([]arrow.Field{
 			{Name: "city", Type: arrow.BinaryTypes.String},
@@ -74,22 +70,33 @@ func ReadWeatherAPIStream(ctx context.Context, cities []config.City) (<-chan arr
 				return
 			}
 
-			currentWeather := jsonData["current_weather"].(map[string]interface{})
-			temperature := currentWeather["temperature"].(float64)
+			jsonDataBytes, err := json.Marshal(jsonData)
+			if err != nil {
+				errChan <- err
+				return
+			}
 
-			bldr := array.NewRecordBuilder(pool, schema)
-			defer bldr.Release()
+			jsonReader := array.NewJSONReader(bytes.NewReader(jsonDataBytes), schema)
+			if jsonReader == nil {
+				errChan <- fmt.Errorf("failed to create JSON reader")
+				return
+			}
+			defer jsonReader.Release()
 
-			bldr.Field(0).(*array.StringBuilder).Append(city.Name)
-			bldr.Field(1).(*array.Float64Builder).Append(city.Latitude)
-			bldr.Field(2).(*array.Float64Builder).Append(city.Longitude)
-			bldr.Field(3).(*array.Float64Builder).Append(temperature)
+			for jsonReader.Next() {
+				record := jsonReader.Record()
+				if record == nil {
+					continue
+				}
 
-			record := bldr.NewRecord()
-			recordChan <- record
+				record.Retain()
+				recordChan <- record
+			}
 
-			totalRowCount += record.NumRows()
-			record.Release()
+			if err := jsonReader.Err(); err != nil {
+				errChan <- err
+				return
+			}
 		}
 	}()
 
