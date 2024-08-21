@@ -139,8 +139,9 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 
 | Utility             | Status       |
 |---------------------|--------------|
-| **Extract and Ingest** | 🚧           |
+| **Extract and Ingest** | ✅           |
 | **Rewrite Parquet** | ✅           |
+| **Generate Parquet** | ✅           |
 | **Convert CSV**     | 🚧           |
 | **Sync Table**      | ❌           |
 
@@ -160,6 +161,7 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **DuckDB**      | ✅         | ✅        |
 | **SQLite**   | ❌         | ❌        |
 | **CockroachDB**  | ✅         | 🚧        |
+| **Flight**      | ❌         | ❌        |
 
 ##### 2. **Cloud Storage Integrations**
 
@@ -174,9 +176,9 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | Format        | Extraction | Ingestion |
 |---------------|------------|-----------|
 | **Parquet**   | ✅         | ✅        |
-| **Avro**      | ❌         | ❌        |
+| **Avro**      | ✅         | ❌        |
 | **CSV**       | ✅         | ✅        |
-| **JSON**      | ✅         | ✅        |
+| **JSON**      | ✅         | ❌        |
 | **IPC**       | ✅         | ✅        |
 | **Iceberg**   | ❌         | ❌        |
 

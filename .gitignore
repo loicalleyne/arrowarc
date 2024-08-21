@@ -31,3 +31,6 @@ scratch/
 assets/docs/
 assets/.DS_Store
 assets/images/ArrowArcLogo_orig.png
+data/
+logs/
+scratch/
