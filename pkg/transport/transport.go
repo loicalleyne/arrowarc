@@ -27,52 +27,41 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package parquet
+package transport
 
 import (
 	"context"
 	"fmt"
 	"sync"
 
-	filesystem "github.com/ArrowArc/ArrowArc/integrations/filesystem"
+	"github.com/apache/arrow/go/v17/arrow"
 )
 
-func RewriteParquetFile(ctx context.Context, inputFilePath, outputFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool) error {
-	recordChan, errChan := filesystem.ReadParquetFileStream(ctx, inputFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
-	writeErrChan := filesystem.WriteParquetFileStream(ctx, outputFilePath, recordChan)
+type RecordSink func(ctx context.Context, recordChan <-chan arrow.Record) <-chan error
 
+func TransportStream(ctx context.Context, sourceChan <-chan arrow.Record, sinks ...RecordSink) <-chan error {
+	errChan := make(chan error, 1)
 	var wg sync.WaitGroup
-	wg.Add(2)
 
-	var readErr, writeErr error
+	for _, sink := range sinks {
+		sinkErrChan := sink(ctx, sourceChan)
+
+		wg.Add(1)
+		go func(sinkErrChan <-chan error) {
+			defer wg.Done()
+			for err := range sinkErrChan {
+				if err != nil {
+					errChan <- fmt.Errorf("error in sink operation: %w", err)
+					return
+				}
+			}
+		}(sinkErrChan)
+	}
 
 	go func() {
-		defer wg.Done()
-		for err := range errChan {
-			if err != nil {
-				readErr = fmt.Errorf("error while reading Parquet file: %w", err)
-				return
-			}
-		}
+		wg.Wait()
+		close(errChan)
 	}()
 
-	go func() {
-		defer wg.Done()
-		for err := range writeErrChan {
-			if err != nil {
-				writeErr = fmt.Errorf("error while writing Parquet file: %w", err)
-				return
-			}
-		}
-	}()
-
-	wg.Wait()
-
-	if readErr != nil {
-		return readErr
-	}
-	if writeErr != nil {
-		return writeErr
-	}
-	return nil
+	return errChan
 }
