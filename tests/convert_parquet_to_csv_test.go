@@ -41,18 +41,14 @@ import (
 )
 
 func TestConvertParquetToCSV(t *testing.T) {
-	t.Parallel() // Parallelize the top-level test
 
-	// Generate a sample Parquet file for testing
 	parquetFilePath := "sample_test.parquet"
 	csvFilePathWithHeader := "output_test_with_header.csv"
 	csvFilePathWithoutHeader := "output_test_without_header.csv"
 
-	// Generate the Parquet file on the fly
 	err := generator.GenerateParquetFile(parquetFilePath, 100*1024, false) // 100 KB, simple structure
 	assert.NoError(t, err, "Error should be nil when generating Parquet file")
 
-	// Use t.Cleanup to ensure the files are removed after all tests complete
 	t.Cleanup(func() {
 		os.Remove(parquetFilePath)
 		os.Remove(csvFilePathWithHeader)
@@ -101,9 +97,8 @@ func TestConvertParquetToCSV(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		test := test // capture range variable
+		test := test
 		t.Run(test.description, func(t *testing.T) {
-			t.Parallel() // Parallelize each subtest
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -111,11 +106,9 @@ func TestConvertParquetToCSV(t *testing.T) {
 			err := converter.ConvertParquetToCSV(ctx, test.parquetFilePath, test.csvFilePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel, test.delimiter, test.includeHeader, test.nullValue, nil, nil)
 			assert.NoError(t, err, "Error should be nil when converting Parquet to CSV")
 
-			// Ensure the CSV file was created
 			_, err = os.Stat(test.csvFilePath)
 			assert.NoError(t, err, "CSV file should be created")
 
-			// Use t.Cleanup to ensure the CSV file is removed after each test completes
 			t.Cleanup(func() {
 				os.Remove(test.csvFilePath)
 			})
