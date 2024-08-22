@@ -27,14 +27,53 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package config
+package test
 
-const (
-	OpenMeteoAPIURL = "https://api.open-meteo.com/v1/forecast"
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+
+	integrations "github.com/ArrowArc/ArrowArc/integrations/filesystem"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/stretchr/testify/assert"
 )
 
-type City struct {
-	Name      string
-	Latitude  float64
-	Longitude float64
+func TestReadJSONFileStream(t *testing.T) {
+	t.Parallel()
+
+	inputFilePath := "input_test.json"
+	defer os.Remove(inputFilePath)
+
+	sampleJSON := `
+		{"id": 1, "name": "John"},
+		{"id": 2, "name": "Jane"},
+		{"id": 3, "name": "Doe"}
+	`
+	err := os.WriteFile(inputFilePath, []byte(sampleJSON), 0644)
+	assert.NoError(t, err, "Error should be nil when writing the sample JSON file")
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
+		{Name: "name", Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	recordChan, errChan := integrations.ReadJSONFileStream(ctx, inputFilePath, schema, 1024)
+
+	var recordsRead int
+	for record := range recordChan {
+		assert.NotNil(t, record, "Record should not be nil")
+		recordsRead += int(record.NumRows())
+		record.Release()
+	}
+
+	for err := range errChan {
+		assert.NoError(t, err, "Error should be nil when reading JSON file")
+	}
+
+	assert.Equal(t, 3, recordsRead, "Should have read three records")
 }
