@@ -27,14 +27,56 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package config
+package test
 
-const (
-	OpenMeteoAPIURL = "https://api.open-meteo.com/v1/forecast"
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+
+	integrations "github.com/ArrowArc/ArrowArc/integrations/filesystem"
+	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/stretchr/testify/assert"
 )
 
-type City struct {
-	Name      string
-	Latitude  float64
-	Longitude float64
+func TestWriteJSONFileStream(t *testing.T) {
+	t.Parallel()
+
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
+		{Name: "name", Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
+
+	mem := memory.NewGoAllocator()
+	b := array.NewRecordBuilder(mem, schema)
+	defer b.Release()
+
+	b.Field(0).(*array.Int64Builder).AppendValues([]int64{1, 2, 3}, nil)
+	b.Field(1).(*array.StringBuilder).AppendValues([]string{"John", "Jane", "Doe"}, nil)
+
+	record := b.NewRecord()
+	defer record.Release()
+
+	recordChan := make(chan arrow.Record, 1)
+	recordChan <- record
+	close(recordChan)
+
+	outputFilePath := "output_test.json"
+	defer os.Remove(outputFilePath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	errChan := integrations.WriteJSONFileStream(ctx, outputFilePath, recordChan)
+
+	if err := <-errChan; err != nil {
+		t.Fatalf("WriteJSONFileStream encountered an error: %v", err)
+	}
+
+	info, err := os.Stat(outputFilePath)
+	assert.NoError(t, err, "Error should be nil when checking the output file")
+	assert.Greater(t, info.Size(), int64(0), "Output JSON file should not be empty")
 }
