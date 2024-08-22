@@ -122,52 +122,66 @@ func WriteDuckDBStream(ctx context.Context, conn adbc.Connection, tableName stri
 		}
 		defer stmt.Close()
 
-		if err := stmt.SetOption(adbc.OptionKeyIngestMode, adbc.OptionValueIngestModeAppend); err != nil {
+		if err := stmt.SetOption(adbc.OptionKeyIngestMode, adbc.OptionValueIngestModeCreate); err != nil {
 			errChan <- fmt.Errorf("failed to set ingest mode: %w", err)
 			return
 		}
+
 		if err := stmt.SetOption(adbc.OptionKeyIngestTargetTable, tableName); err != nil {
 			errChan <- fmt.Errorf("failed to set ingest target table: %w", err)
 			return
 		}
-		// Create the table if it doesn't exist
+
 		if _, err := stmt.ExecuteUpdate(ctx); err != nil {
-			errChan <- fmt.Errorf("failed to create table: %w", err)
+			errChan <- fmt.Errorf("failed to execute update: %w", err)
 			return
 		}
 
-		for record := range recordChan {
-			if record.NumRows() == 0 {
-				errChan <- fmt.Errorf("received record with no rows")
-				continue
-			}
+		for {
+			select {
+			case <-ctx.Done():
+				errChan <- ctx.Err()
+				return // Exit the goroutine if context is canceled or times out
+			case record, ok := <-recordChan:
+				if !ok {
+					// Channel closed, end of data
+					return
+				}
 
-			fmt.Printf("Writing record with schema: %v\n", record.Schema())
+				// Check if the record has rows
+				if record.NumRows() == 0 {
+					errChan <- fmt.Errorf("received record with no rows")
+					continue
+				}
 
-			// Create a temporary in-memory IPC stream from the record
-			var buf bytes.Buffer
-			writer := ipc.NewWriter(&buf, ipc.WithSchema(record.Schema()))
-			if err := writer.Write(record); err != nil {
-				errChan <- fmt.Errorf("failed to write record to IPC stream: %w", err)
-				return
-			}
-			writer.Close()
+				// Create a temporary in-memory IPC stream from the record
+				var buf bytes.Buffer
+				writer := ipc.NewWriter(&buf, ipc.WithSchema(record.Schema()))
+				if err := writer.Write(record); err != nil {
+					errChan <- fmt.Errorf("failed to write record to IPC stream: %w", err)
+					return
+				}
+				if err := writer.Close(); err != nil {
+					errChan <- fmt.Errorf("failed to close IPC writer: %w", err)
+					return
+				}
 
-			reader, err := ipc.NewReader(&buf)
-			if err != nil {
-				errChan <- fmt.Errorf("failed to create IPC reader: %w", err)
-				return
-			}
-			defer reader.Release()
+				reader, err := ipc.NewReader(&buf)
+				if err != nil {
+					errChan <- fmt.Errorf("failed to create IPC reader: %w", err)
+					return
+				}
+				defer reader.Release()
 
-			if err := stmt.BindStream(ctx, reader); err != nil {
-				errChan <- fmt.Errorf("failed to bind stream: %w", err)
-				return
-			}
+				if err := stmt.BindStream(ctx, reader); err != nil {
+					errChan <- fmt.Errorf("failed to bind stream: %w", err)
+					return
+				}
 
-			if _, err := stmt.ExecuteUpdate(ctx); err != nil {
-				errChan <- fmt.Errorf("failed to execute update: %w", err)
-				return
+				if _, err := stmt.ExecuteUpdate(ctx); err != nil {
+					errChan <- fmt.Errorf("failed to execute update: %w", err)
+					return
+				}
 			}
 		}
 	}()

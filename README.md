@@ -117,7 +117,7 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 
 | Utility             | Status       |
 |---------------------|--------------|
-| **Extract and Ingest** | ✅           |
+| **Transport** | 🚧           |
 | **Rewrite Parquet** | ✅           |
 | **Generate Parquet** | ✅           |
 | **Convert CSV**     | 🚧           |
@@ -138,6 +138,7 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **Snowflake**   | ❌         | ❌        |
 | **DuckDB**      | ✅         | ✅        |
 | **SQLite**   | ❌         | ❌        |
+| **Spanner**   | ❌         | ❌        |
 | **CockroachDB**  | ✅         | 🚧        |
 | **Flight**      | ❌         | ❌        |
 
