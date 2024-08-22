@@ -1,6 +1,6 @@
 module github.com/ArrowArc/ArrowArc
 
-go 1.22.3
+go 1.23.0
 
 require (
 	cloud.google.com/go/bigquery v1.62.0
@@ -9,7 +9,6 @@ require (
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/go-faker/faker/v4 v4.4.2
 	github.com/google/go-github/v64 v64.0.0
-	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/oauth2 v0.21.0
 	google.golang.org/api v0.188.0
@@ -33,6 +32,7 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.5 // indirect
 	github.com/hamba/avro/v2 v2.22.1 // indirect
@@ -67,7 +67,7 @@ require (
 
 require (
 	github.com/apache/arrow/go/v17 v17.0.0
-	github.com/goccy/go-json v0.10.3
+	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
