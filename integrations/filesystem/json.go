@@ -31,6 +31,7 @@ package integrations
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -84,4 +85,48 @@ func ReadJSONFileStream(ctx context.Context, filePath string, schema *arrow.Sche
 	}()
 
 	return recordChan, errChan
+}
+
+func WriteJSONFileStream(ctx context.Context, filePath string, recordChan <-chan arrow.Record) <-chan error {
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer close(errChan)
+
+		file, err := os.Create(filePath)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to create file: %w", err)
+			return
+		}
+		defer func() {
+			if cerr := file.Close(); cerr != nil && err == nil {
+				err = fmt.Errorf("failed to close file: %w", cerr)
+				errChan <- err
+			}
+		}()
+
+		encoder := json.NewEncoder(file)
+
+		for {
+			select {
+			case <-ctx.Done():
+				errChan <- ctx.Err()
+				return // Exit the goroutine if context is canceled or times out
+			case record, ok := <-recordChan:
+				if !ok {
+					// Channel closed, end of data
+					return
+				}
+
+				structArray := array.RecordToStructArray(record)
+
+				if err := encoder.Encode(structArray); err != nil {
+					errChan <- fmt.Errorf("error writing JSON record: %w", err)
+					return
+				}
+			}
+		}
+	}()
+
+	return errChan
 }
