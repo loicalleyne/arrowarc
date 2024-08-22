@@ -32,35 +32,26 @@ package transport
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/apache/arrow/go/v17/arrow"
 )
 
 type RecordSink func(ctx context.Context, recordChan <-chan arrow.Record) <-chan error
 
-func TransportStream(ctx context.Context, sourceChan <-chan arrow.Record, sinks ...RecordSink) <-chan error {
+func TransportStream(ctx context.Context, sourceChan <-chan arrow.Record, sink RecordSink) <-chan error {
 	errChan := make(chan error, 1)
-	var wg sync.WaitGroup
-
-	for _, sink := range sinks {
-		sinkErrChan := sink(ctx, sourceChan)
-
-		wg.Add(1)
-		go func(sinkErrChan <-chan error) {
-			defer wg.Done()
-			for err := range sinkErrChan {
-				if err != nil {
-					errChan <- fmt.Errorf("error in sink operation: %w", err)
-					return
-				}
-			}
-		}(sinkErrChan)
-	}
 
 	go func() {
-		wg.Wait()
-		close(errChan)
+		defer close(errChan)
+
+		sinkErrChan := sink(ctx, sourceChan)
+
+		for err := range sinkErrChan {
+			if err != nil {
+				errChan <- fmt.Errorf("error in sink operation: %w", err)
+				return
+			}
+		}
 	}()
 
 	return errChan

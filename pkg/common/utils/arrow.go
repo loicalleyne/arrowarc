@@ -96,3 +96,18 @@ func ArrowRecordToString(record arrow.Record) string {
 	}
 	return result
 }
+
+func CloneSourceStream(sourceChan <-chan arrow.Record, numClones int) []<-chan arrow.Record {
+	clones := make([]<-chan arrow.Record, numClones)
+	for i := 0; i < numClones; i++ {
+		cloneChan := make(chan arrow.Record)
+		clones[i] = cloneChan
+		go func() {
+			for record := range sourceChan {
+				cloneChan <- record
+			}
+			close(cloneChan)
+		}()
+	}
+	return clones
+}

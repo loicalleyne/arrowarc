@@ -7,6 +7,7 @@ require (
 	cloud.google.com/go/storage v1.42.0
 	github.com/apache/arrow-adbc/go/adbc v1.1.0
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
+	github.com/fergusstrange/embedded-postgres v1.28.0
 	github.com/go-faker/faker/v4 v4.4.2
 	github.com/google/go-github/v64 v64.0.0
 	github.com/stretchr/testify v1.9.0
@@ -38,6 +39,7 @@ require (
 	github.com/hamba/avro/v2 v2.22.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/asmfmt v1.3.2 // indirect
+	github.com/lib/pq v1.10.4 // indirect
 	github.com/minio/asm2plan9s v0.0.0-20200509001527-cdd76441f9d8 // indirect
 	github.com/minio/c2goasm v0.0.0-20190812172519-36a3d3bbc4f3 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
@@ -48,6 +50,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
