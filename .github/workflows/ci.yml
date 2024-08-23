@@ -1,18 +1,29 @@
-name: Go ArrowArc Build
+name: ArrowArc Build
 
 on:
   push:
     branches:
       - main
+    paths:
+      - '**.go'           # Only trigger on changes to Go files
+      - go.mod            # Trigger on changes to go.mod
+      - go.sum            # Trigger on changes to go.sum
+      - 'pkg/**'          # Trigger on changes to anything in the pkg directory
+      - 'integrations/**' # Trigger on changes to anything in the integrations directory
   pull_request:
     branches:
       - main
+    paths:
+      - '**.go'           # Only trigger on changes to Go files
+      - go.mod            # Trigger on changes to go.mod
+      - go.sum            # Trigger on changes to go.sum
+      - 'pkg/**'          # Trigger on changes to anything in the pkg directory
+      - 'integrations/**' # Trigger on changes to anything in the integrations directory
 
 jobs:
   build:
 
     runs-on: ubuntu-latest
-    timeout-minutes: 20
 
     steps:
     - name: Checkout code
@@ -22,16 +33,6 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version: 1.23.0
-
-    - name: Cache Go modules
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
 
     - name: Install dependencies
       run: go mod tidy
