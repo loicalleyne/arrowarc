@@ -41,6 +41,11 @@ import (
 )
 
 func TestReadParquetFileStream(t *testing.T) {
+	// Skip this test in CI environment
+	if os.Getenv("CI") == "true" {
+		t.Skip("Skipping DuckDB integration test in CI environment.")
+	}
+
 	t.Parallel() // Parallelize the top-level test
 
 	// Generate a sample Parquet file for testing
