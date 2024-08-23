@@ -11,7 +11,7 @@ require (
 	github.com/go-faker/faker/v4 v4.4.2
 	github.com/google/go-github/v64 v64.0.0
 	github.com/stretchr/testify v1.9.0
-	golang.org/x/oauth2 v0.21.0
+	golang.org/x/oauth2 v0.22.0
 	google.golang.org/api v0.188.0
 )
 
