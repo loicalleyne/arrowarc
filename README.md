@@ -28,7 +28,7 @@ ArrowArc also includes several utility functions that originated from my own nee
 
 ArrowArc is still very much a work in progress, but if you’re like me and enjoy experimenting with data processing, I’d love to hear from you.
 
-### Example: Streaming Data from a Parquet File
+### Example: Streaming Data from Bigquery and Writing to DuckDB
 
 Here’s a quick example of how you might use ArrowArc to stream data from BigQuery and write it to DuckDB.s
 
@@ -41,14 +41,14 @@ recordChan, errChan := GetBigQueryStream(ctx, "my_project", "my_dataset", "my_ta
 // Handle errors
 go func() {
     if err := <-errChan; err != nil {
-        log.Fatalf("Error streaming from Parquet file: %v", err)
+        log.Fatalf("Error streaming from BigQuery: %v", err)
     }
 }()
 
 // Write data to DuckDB
 err := WriteDuckDBStream(ctx, conn, "my_table", recordChan)
 if err != nil {
-    log.Fatalf("Error writing to Parquet file: %v", err)
+    log.Fatalf("Error writing to DuckDB: %v", err)
 }
 ```
 
