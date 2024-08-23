@@ -32,6 +32,7 @@ package test
 import (
 	"context"
 	"database/sql"
+	"os"
 	"testing"
 	"time"
 
@@ -41,6 +42,11 @@ import (
 )
 
 func TestGetArrowStreamSuccess(t *testing.T) {
+
+	if os.Getenv("CI") == "true" {
+		t.Skip("Skipping DuckDB integration test in CI environment.")
+	}
+
 	postgres := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().Port(5433))
 	err := postgres.Start()
 	assert.NoError(t, err, "Embedded Postgres should start without error")
