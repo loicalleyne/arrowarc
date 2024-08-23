@@ -44,6 +44,10 @@ import (
 )
 
 func TestTransportStreamWithDuckDBSink(t *testing.T) {
+	// If testing on GitHub Actions, skip this test because of a missing dependency. TODO: Fix this.
+	if os.Getenv("CI") == "true" {
+		t.Skip("Skipping DuckDB integration test in CI environment.")
+	}
 	inputFilePath := "sample_test.parquet"
 	err := generator.GenerateParquetFile(inputFilePath, 100*1024, false)
 	assert.NoError(t, err, "Error should be nil when generating Parquet file")

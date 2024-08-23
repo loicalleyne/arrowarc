@@ -111,3 +111,11 @@ func CloneSourceStream(sourceChan <-chan arrow.Record, numClones int) []<-chan a
 	}
 	return clones
 }
+
+func ArrowBatchToJSON(batch arrow.Record) (string, error) {
+	json, err := batch.MarshalJSON()
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal Arrow batch to JSON: %w", err)
+	}
+	return string(json), nil
+}

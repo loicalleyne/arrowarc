@@ -46,11 +46,18 @@ func TransportStream(ctx context.Context, sourceChan <-chan arrow.Record, sink R
 
 		sinkErrChan := sink(ctx, sourceChan)
 
+		// Handle errors from the sink
 		for err := range sinkErrChan {
 			if err != nil {
 				errChan <- fmt.Errorf("error in sink operation: %w", err)
-				return
+				break // Stop on the first error, but continue draining sourceChan
 			}
+		}
+
+		// Ensure sourceChan is drained to prevent hanging
+		for range sourceChan {
+			// Do nothing
+
 		}
 	}()
 
