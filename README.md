@@ -2,7 +2,7 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/ArrowArc/ArrowArc)](https://goreportcard.com/report/github.com/ArrowArc/ArrowArc)
 
-[![Go ArrowArc Build](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml/badge.svg)](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml)
+[![ArrowArc Build](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml/badge.svg)](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml)
 
 ArrowArc is a high-performance data integration platform designed to challenge the status quo in big data processing. At its core, ArrowArc is built on the principle that **"small data is the new big data,"**—ArrowArc recognizes that, for most use cases, traditional Big Data tools are often an expensive overkill. With modern hardware and technological advancements, ArrowArc enables the efficient processing of substantial data volumes on a single node, making it a powerful and practical alternative.
 
