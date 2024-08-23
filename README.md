@@ -2,63 +2,41 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/ArrowArc/ArrowArc)](https://goreportcard.com/report/github.com/ArrowArc/ArrowArc) [![ArrowArc Build](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml/badge.svg)](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml)
 
-ArrowArc is a high-performance data integration platform designed to challenge the status quo in big data processing. At its core, ArrowArc is built on the principle that **"small data is the new big data,"**—ArrowArc recognizes that, for most use cases, traditional Big Data tools are often an expensive overkill. With modern hardware and technological advancements, ArrowArc enables the efficient processing of substantial data volumes on a single node, making it a powerful and practical alternative.
+Welcome to ArrowArc, a hobby project born out of my passion for data processing, Go, and Apache Arrow. ArrowArc isn't trying to compete with the heavy hitters in the Big Data space—it's about seeing just how fast I can move data on modern hardware, leveraging the amazing tools we have at our disposal today.
 
 ---
 
-## Overview
+## Why Go and Apache Arrow?
 
-ArrowArc is architected to handle complex data integration tasks with a focus on extreme performance, low latency, and high throughput. At the heart of ArrowArc's design is a commitment to efficient, concurrent data processing—an area where Go excels due to its built-in support for concurrency and its lightweight goroutines.
-
-### Go Channels for Data Streaming
-
-The core of ArrowArc is built around a common pattern for data extraction and ingestion, utilizing Go channels as the interface for streaming data between various sources and sinks:
-
-```go
-<-chan arrow.Record, <-chan error
-```
-
-## Intent of the Architecture
-
-The architecture of ArrowArc is designed to expose a flexible and efficient pattern for both data extraction and ingestion, where all integrations (sources and sinks) follow a common interface using channels to stream Apache Arrow records. This approach ensures that data flows through the system with minimal overhead, maintaining the high-speed processing capabilities of Apache Arrow while leveraging the concurrency features of Go.
-
-By adhering to this common pattern, ArrowArc demonstrates how different components can be integrated into a cohesive system, making it easier to extend and adapt to new data formats and storage solutions.
+I love working with Go for its elegance and powerful concurrency features. Combine that with Apache Arrow, which is optimized for in-memory data processing, and you have a recipe for high-performance data manipulation. ArrowArc gets data into Arrow format as quickly as possible and keeps it there, allowing for efficient, low-latency processing.
 
 ---
 
-## Components
+## Zero-Code Configuration
 
-### Integrations
-
-ArrowArc is engineered with a singular focus: achieving breakneck speed and simplifying data integration workflows centered around Apache Arrow. By abstracting away much of the inherent complexity, ArrowArc enables developers to integrate with various platforms, storage providers, and data formats, both for extraction and ingestion purposes.
-
-#### Example: Google Cloud BigQuery
-
-```go
-func ReadBigQueryStream(ctx context.Context, projectID, datasetID, tableID string) (<-chan arrow.Record, <-chan error) {
-}
-```
-
-### Sinks
-
-Data can be streamed and written to various sinks, such as Google Cloud Storage and Postgres. ArrowArc supports writing data in formats like Parquet and CSV or platforms like DuckDB, with more integrations coming.
-
-#### Example: Filesystem Sink
-
-```go
-func WriteParquetFileStream(ctx context.Context, filePath string, recordChan <-chan arrow.Record) <-chan error {
-}
-```
+ArrowArc is built with simplicity in mind. It's designed to be entirely configurable, so you can set it up and let it run—no coding required to sync or transport your data. Just define your configuration, and ArrowArc takes care of the rest (theoretically).
 
 ---
 
-### Gluing it All Together
+## Utility Functions
 
-ArrowArc simplifies high-performance data synchronization, enabling tasks like rewriting a Parquet file with minimal code.
+ArrowArc also includes several utility functions that originated from my own need for integration testing. These utilities are designed to make it easier to work with different data sources and sinks, helping you validate and refine your configurations without extra hassle.
+
+---
+
+## Getting Started
+
+ArrowArc is still very much a work in progress, but if you’re like me and enjoy experimenting with data processing, I’d love for you to give it a try.
+
+### Example: Streaming Data from a Parquet File
+
+Here’s a quick example of how you might use ArrowArc to stream data from a Parquet file:
 
 ```go
+ctx := context.Background()
+
 // Stream data from a Parquet file using a memory map in 1,000,000 record batches
-recordChan, errChan := GetParquetArrowStream(ctx, inputFilePath, true, 1000000)
+recordChan, errChan := GetParquetArrowStream(ctx, "input.parquet", true, 1000000)
 
 // Handle errors
 go func() {
@@ -67,37 +45,10 @@ go func() {
     }
 }()
 
-// Write data to an output Parquet file
-if err := WriteParquetFileStream(ctx context.Context, filePath string, recordChan <-chan arrow.Record); err != nil {
-    log.Fatalf("Error writing to output Parquet file: %v", err)
-}
-```
-
-In just a few lines of code, ArrowArc can stream data from a Parquet file and write it back out, all while leveraging the power of Apache Arrow for in-memory data processing. This streamlined approach allows you to focus on building effective solutions without getting entangled in the complexities of data handling.
-
-Additionally, ArrowArc makes it easy to read data once from a source and write it to multiple sinks efficiently using ```TransportStream```.
-
-```go
-ctx := context.Background()
-sourceChan := make(chan arrow.Record)
-defer close(sourceChan)
-
-// Define multiple sinks
-jsonSink := func(ctx context.Context, recordChan <-chan arrow.Record) <-chan error {
-    return WriteJSONFileStream(ctx, "output.json", recordChan)
-}
-
-parquetSink := func(ctx context.Context, recordChan <-chan arrow.Record) <-chan error {
-    return WriteParquetFileStream(ctx, "output.parquet", recordChan)
-}
-
-// Use TransportStream with both JSON and Parquet sinks
-errChan := transport.TransportStream(ctx, sourceChan, jsonSink, parquetSink)
-
-if err := <-errChan; err != nil {
-    fmt.Printf("TransportStream encountered an error: %v\n", err)
-} else {
-    fmt.Println("TransportStream completed successfully")
+// Write data to DuckDB
+err := WriteDuckDBStream(ctx, conn, "my_table", recordChan)
+if err != nil {
+    log.Fatalf("Error writing to Parquet file: %v", err)
 }
 ```
 
@@ -105,7 +56,7 @@ if err := <-errChan; err != nil {
 
 ### ArrowArc Feature Matrix
 
-This tables below indicate the status of the planned features of ArrowArc, including command line utilities, integrations, and cloud storage provider support. The status of each feature is indicated as follows:
+I’m actively working on adding new features and integrations. Here’s where things stand:
 
 - `✅` - Implemented
 - `🚧` - In Progress
@@ -113,21 +64,21 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 
 ### Features Overview
 
-#### Command Line Utilities
+### Command Line Utilities
 
 | Utility             | Status       |
 |---------------------|--------------|
-| **Transport** | 🚧           |
+| **Transport**       | 🚧           |
 | **Rewrite Parquet** | ✅           |
-| **Generate Parquet** | ✅           |
+| **Generate Parquet**| ✅           |
 | **Convert CSV**     | ✅           |
 | **Sync Table**      | ❌           |
 
 ---
 
-#### Integration Types
+### Integration Types
 
-##### 1. **Database Integrations**
+#### 1. Database Integrations
 
 | Database        | Extraction | Ingestion |
 |-----------------|------------|-----------|
@@ -137,12 +88,14 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **BigQuery**    | ✅         | 🚧        |
 | **Snowflake**   | ❌         | ❌        |
 | **DuckDB**      | ✅         | ✅        |
-| **SQLite**   | ❌         | ❌        |
-| **Spanner**   | ❌         | ❌        |
-| **CockroachDB**  | ✅         | 🚧        |
+| **SQLite**      | ❌         | ❌        |
+| **Spanner**     | ❌         | ❌        |
+| **CockroachDB** | ✅         | 🚧        |
 | **Flight**      | ❌         | ❌        |
 
-##### 2. **Cloud Storage Integrations**
+---
+
+#### 2. Cloud Storage Integrations
 
 | Provider                         | Extraction | Ingestion |
 |----------------------------------|------------|-----------|
@@ -150,7 +103,9 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **Amazon S3**                    | ❌         | ❌        |
 | **Azure Blob Storage**           | ❌         | ❌        |
 
-##### 3. **Filesystem Formats**
+---
+
+#### 3. Filesystem Formats
 
 | Format        | Extraction | Ingestion |
 |---------------|------------|-----------|

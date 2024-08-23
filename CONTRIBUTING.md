@@ -15,7 +15,7 @@ Click the "Fork" button at the top-right corner of this page to create a copy of
 Once you've forked the repository, clone it to your local machine:
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/ArrowArc.git
+git clone https://github.com/ArrowArc/ArrowArc.git
 cd ArrowArc
 ```
 
