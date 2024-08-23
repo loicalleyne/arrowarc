@@ -77,7 +77,7 @@ func TestTransportStream(t *testing.T) {
 			sourceChan, errChan := integrations.ReadParquetFileStream(ctx, inputFilePath, false, 1024, nil, nil, true)
 
 			// Open DuckDB connection
-			db, err := duck.OpenDuckDBConnection(ctx, test.duckDBFilePath)
+			db, err := duck.OpenDuckDBConnection(ctx, test.duckDBFilePath, nil)
 			assert.NoError(t, err, "Error should be nil when opening DuckDB file")
 			defer db.Close()
 
