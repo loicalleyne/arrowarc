@@ -10,7 +10,6 @@ on:
       - go.sum
       - 'pkg/**'
       - 'integrations/**'
-    # types: [push]
   pull_request:
     branches:
       - main
@@ -20,8 +19,6 @@ on:
       - go.sum
       - 'pkg/**'
       - 'integrations/**'
-    # Only trigger on pull requests if the base repository is ArrowArc/ArrowArc (avoids building forks)
-    types: [opened, synchronize]
 
 jobs:
   build:
@@ -46,4 +43,5 @@ jobs:
     - name: Run tests
       run: go test ./...
 
-    if: github.repository == 'ArrowArc/ArrowArc'
+    # Only run the build if it's either a push event or a PR in the main repository
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.repository == 'ArrowArc/ArrowArc')
