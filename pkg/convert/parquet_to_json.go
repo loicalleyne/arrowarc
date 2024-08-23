@@ -38,10 +38,20 @@ import (
 	"github.com/apache/arrow/go/v17/arrow"
 )
 
-func ConvertCSVToParquet(ctx context.Context, csvFilePath, parquetFilePath string, schema *arrow.Schema, hasHeader bool, chunkSize int64, delimiter rune, nullValues []string, stringsCanBeNull bool) error {
-	recordChan, errChan := filesystem.ReadCSVFileStream(ctx, csvFilePath, schema, hasHeader, chunkSize, delimiter, nullValues, stringsCanBeNull)
+func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, includeStructs bool) error {
+	recordChan, errChan := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
 
-	writeErrChan := filesystem.WriteParquetFileStream(ctx, parquetFilePath, recordChan)
+	var schema *arrow.Schema
+	for rec := range recordChan {
+		schema = rec.Schema()
+		break
+	}
+
+	if schema == nil {
+		return fmt.Errorf("could not determine schema from Parquet file")
+	}
+
+	writeErrChan := filesystem.WriteJSONFileStream(ctx, jsonFilePath, recordChan)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -52,7 +62,7 @@ func ConvertCSVToParquet(ctx context.Context, csvFilePath, parquetFilePath strin
 		defer wg.Done()
 		for err := range errChan {
 			if err != nil {
-				readErr = fmt.Errorf("error while reading CSV file: %w", err)
+				readErr = fmt.Errorf("error while reading Parquet file: %w", err)
 				return
 			}
 		}
@@ -62,7 +72,7 @@ func ConvertCSVToParquet(ctx context.Context, csvFilePath, parquetFilePath strin
 		defer wg.Done()
 		for err := range writeErrChan {
 			if err != nil {
-				writeErr = fmt.Errorf("error while writing Parquet file: %w", err)
+				writeErr = fmt.Errorf("error while writing JSON file: %w", err)
 				return
 			}
 		}
