@@ -36,7 +36,7 @@ import (
 	"testing"
 	"time"
 
-	integrations "github.com/ArrowArc/ArrowArc/integrations/postgres"
+	integrations "github.com/ArrowArc/ArrowArc/internal/integrations/postgres"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/stretchr/testify/assert"
 )

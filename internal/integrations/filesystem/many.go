@@ -33,7 +33,7 @@ import (
 	"context"
 	"fmt"
 
-	duckdb "github.com/ArrowArc/ArrowArc/integrations/duckdb"
+	duckdb "github.com/ArrowArc/ArrowArc/internal/integrations/duckdb"
 	"github.com/apache/arrow/go/v17/arrow"
 )
 

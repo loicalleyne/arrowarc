@@ -35,7 +35,7 @@ import (
 	"testing"
 	"time"
 
-	integrations "github.com/ArrowArc/ArrowArc/integrations/duckdb"
+	integrations "github.com/ArrowArc/ArrowArc/internal/integrations/duckdb"
 	helper "github.com/ArrowArc/ArrowArc/pkg/common/utils"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"

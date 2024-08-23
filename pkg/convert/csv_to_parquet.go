@@ -34,7 +34,7 @@ import (
 	"fmt"
 	"sync"
 
-	filesystem "github.com/ArrowArc/ArrowArc/integrations/filesystem"
+	filesystem "github.com/ArrowArc/ArrowArc/internal/integrations/filesystem"
 	"github.com/apache/arrow/go/v17/arrow"
 )
 
