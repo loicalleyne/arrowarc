@@ -62,7 +62,7 @@ I’m actively working on adding new features and integrations. Here’s where t
 - `🚧` - In Progress
 - `❌` - Not Started
 
-### Features Overview
+---
 
 ### Command Line Utilities
 
