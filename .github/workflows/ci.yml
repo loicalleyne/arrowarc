@@ -5,20 +5,23 @@ on:
     branches:
       - main
     paths:
-      - '**.go'           # Only trigger on changes to Go files
-      - go.mod            # Trigger on changes to go.mod
-      - go.sum            # Trigger on changes to go.sum
-      - 'pkg/**'          # Trigger on changes to anything in the pkg directory
-      - 'integrations/**' # Trigger on changes to anything in the integrations directory
+      - '**.go'
+      - go.mod
+      - go.sum
+      - 'pkg/**'
+      - 'integrations/**'
+    # types: [push]
   pull_request:
     branches:
       - main
     paths:
-      - '**.go'           # Only trigger on changes to Go files
-      - go.mod            # Trigger on changes to go.mod
-      - go.sum            # Trigger on changes to go.sum
-      - 'pkg/**'          # Trigger on changes to anything in the pkg directory
-      - 'integrations/**' # Trigger on changes to anything in the integrations directory
+      - '**.go'
+      - go.mod
+      - go.sum
+      - 'pkg/**'
+      - 'integrations/**'
+    # Only trigger on pull requests if the base repository is ArrowArc/ArrowArc (avoids building forks)
+    types: [opened, synchronize]
 
 jobs:
   build:
