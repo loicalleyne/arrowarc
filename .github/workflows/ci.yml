@@ -1,4 +1,4 @@
-name: Go ArrowArc CI
+name: Go ArrowArc Build
 
 on:
   push:
@@ -12,6 +12,7 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
     - name: Checkout code
@@ -37,4 +38,3 @@ jobs:
 
     - name: Run linters
       run: go vet ./...
-
