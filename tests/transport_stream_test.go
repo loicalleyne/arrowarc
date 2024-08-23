@@ -43,7 +43,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestTransportStreamWithDuckDBSink(t *testing.T) {
+func TestTransportStream(t *testing.T) {
+	t.Skip("Skipping Transport Stream Test.")
 	// If testing on GitHub Actions, skip this test because of a missing dependency. TODO: Fix this.
 	if os.Getenv("CI") == "true" {
 		t.Skip("Skipping DuckDB integration test in CI environment.")

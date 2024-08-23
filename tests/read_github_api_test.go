@@ -41,9 +41,8 @@ import (
 )
 
 func TestGitHubRepoAPIStream(t *testing.T) {
-	// If testing on GitHub Actions, skip this test because GitHub API rate limits are too low
-	if os.Getenv("CI") == "true" {
-		t.Skip("Skipping DuckDB integration test in CI environment.")
+	if os.Getenv("GITHUB_TOKEN") == "" {
+		t.Skip("Skipping test as GITHUB_TOKEN is not set")
 	}
 
 	t.Parallel() // Parallelize the top-level test

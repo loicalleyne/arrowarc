@@ -1,5 +1,5 @@
 
-# Contributor Covenant Code of Conduct
+# ArrowArc Code of Conduct
 
 ## Our Pledge
 
