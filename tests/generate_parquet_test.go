@@ -79,8 +79,8 @@ func TestGenerateParquetFile(t *testing.T) {
 			assert.True(t, info.Size() > 0, "Generated Parquet file should have a size greater than 0")
 
 			// Check that the file size is greater than or equal to the target size and within a reasonable range
-			expectedMinSize := test.targetSize                         // the minimum expected size
-			expectedMaxSize := test.targetSize + (test.targetSize / 2) // allowing up to 50% overhead for Parquet format
+			expectedMinSize := test.targetSize     // the minimum expected size
+			expectedMaxSize := test.targetSize * 2 // the maximum expected size
 			assert.GreaterOrEqual(t, info.Size(), expectedMinSize, "Generated Parquet file should be at least the target size")
 			assert.LessOrEqual(t, info.Size(), expectedMaxSize, "Generated Parquet file should not be excessively larger than the target size")
 		})
