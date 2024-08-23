@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	cloud.google.com/go/bigquery v1.62.0
-	cloud.google.com/go/storage v1.42.0
+	cloud.google.com/go/storage v1.43.0
 	github.com/apache/arrow-adbc/go/adbc v1.1.0
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/fergusstrange/embedded-postgres v1.28.0
