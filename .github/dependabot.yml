@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod" # Specifies that Dependabot should manage Go dependencies
+    directory: "/" # Root directory of the repository
+    schedule:
+      interval: "weekly" # Dependabot will check for updates on a weekly basis
+      day: "monday" # Set the specific day to run the update check
+      time: "08:00" # Set the time to run the update check (in UTC)
+    commit-message:
+      prefix: "deps" # Prefix for commit messages created by Dependabot
+      include: "scope" # Include the scope of the update in the commit message
+    open-pull-requests-limit: 5 # Limit the number of open PRs created by Dependabot
+    labels:
+      - "dependencies" # Label applied to PRs created by Dependabot
+      - "automated" # Another label to indicate the PR is automated
+    reviewers:
+      - "team-maintainers" # Automatically request review from the team maintainers
+
+  - package-ecosystem: "github-actions" # Specifies that Dependabot should manage GitHub Actions
+    directory: "/" # Root directory of the repository
+    schedule:
+      interval: "weekly" # Dependabot will check for updates on a weekly basis
+      day: "monday"
+      time: "08:00" # Check for updates every Monday at 08:00 UTC
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    open-pull-requests-limit: 2 # Limit the number of open PRs for GitHub Actions updates
+    labels:
+      - "ci"
+      - "dependencies"
+    reviewers:
+      - "ci-maintainers" # Automatically request review from the CI maintainers
