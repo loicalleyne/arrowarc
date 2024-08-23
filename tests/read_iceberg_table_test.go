@@ -35,7 +35,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/ArrowArc/ArrowArc/integrations/filesystem"
+	. "github.com/ArrowArc/ArrowArc/internal/integrations/filesystem"
 	helper "github.com/ArrowArc/ArrowArc/pkg/common/utils"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/stretchr/testify/assert"

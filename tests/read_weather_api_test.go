@@ -34,7 +34,7 @@ import (
 	"testing"
 	"time"
 
-	weather "github.com/ArrowArc/ArrowArc/integrations/api/weather"
+	weather "github.com/ArrowArc/ArrowArc/internal/integrations/api/weather"
 	"github.com/ArrowArc/ArrowArc/pkg/common/config"
 	helper "github.com/ArrowArc/ArrowArc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
