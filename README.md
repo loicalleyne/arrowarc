@@ -163,6 +163,10 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 
 ---
 
+## Contributing
+
+We welcome all contributors. Please see the [Code of Conduct](./CODE_OF_CONDUCT.md).
+
 ## :page_facing_up: License
 
 Please see the [LICENSE](./LICENSE) for more details.
