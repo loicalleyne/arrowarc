@@ -120,7 +120,7 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **Transport** | 🚧           |
 | **Rewrite Parquet** | ✅           |
 | **Generate Parquet** | ✅           |
-| **Convert CSV**     | 🚧           |
+| **Convert CSV**     | ✅           |
 | **Sync Table**      | ❌           |
 
 ---
@@ -157,7 +157,7 @@ This tables below indicate the status of the planned features of ArrowArc, inclu
 | **Parquet**   | ✅         | ✅        |
 | **Avro**      | ✅         | ❌        |
 | **CSV**       | ✅         | ✅        |
-| **JSON**      | ✅         | ❌        |
+| **JSON**      | ✅         | ✅        |
 | **IPC**       | ✅         | ✅        |
 | **Iceberg**   | ❌         | ❌        |
 
