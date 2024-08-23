@@ -30,11 +30,11 @@
 package parquet
 
 import (
+	"crypto/rand"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"os"
-	"time"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
@@ -90,16 +90,15 @@ func GenerateParquetFile(filePath string, targetSize int64, complex bool) error 
 	}
 	defer parquetWriter.Close()
 
-	// Create a local random generator
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	// Generate and write data until the target file size is reached
 	currentSize := int64(0)
 	recordCount := 0
 	batchSize := 1000 // Number of rows per batch
+
 	for currentSize < targetSize {
 		// Generate a batch of dummy data
-		records := generateDummyData(mem, schema, batchSize, rnd, complex)
+		rdm := secureRandInt(100)
+		records := generateDummyData(mem, schema, batchSize, &rdm, complex)
 		recordCount += batchSize
 
 		// Write the batch to the Parquet file
@@ -125,8 +124,16 @@ func GenerateParquetFile(filePath string, targetSize int64, complex bool) error 
 	return nil
 }
 
+func secureRandInt(max int64) int64 {
+	n, err := rand.Int(rand.Reader, big.NewInt(max))
+	if err != nil {
+		log.Fatalf("failed to generate secure random number: %v", err)
+	}
+	return n.Int64()
+}
+
 // generateDummyData generates data based on the schema, optionally including nested structures.
-func generateDummyData(mem memory.Allocator, schema *arrow.Schema, numRows int, rnd *rand.Rand, complex bool) arrow.Record {
+func generateDummyData(mem memory.Allocator, schema *arrow.Schema, numRows int, rnd *int64, complex bool) arrow.Record {
 	if complex {
 		// Complex: with nested structures
 		structBldr := array.NewStructBuilder(mem, schema.Fields()[0].Type.(*arrow.StructType))
@@ -143,7 +150,7 @@ func generateDummyData(mem memory.Allocator, schema *arrow.Schema, numRows int, 
 			idBldr.Append(int64(i))
 			nameBldr.Append(faker.Name())
 			detailsBldr.Append(true)
-			ageBldr.Append(rnd.Int31n(100))
+			ageBldr.Append(int32(int(*rnd)))
 			emailBldr.Append(faker.Email())
 		}
 

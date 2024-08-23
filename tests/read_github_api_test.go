@@ -45,8 +45,6 @@ func TestGitHubRepoAPIStream(t *testing.T) {
 		t.Skip("Skipping test as GITHUB_TOKEN is not set")
 	}
 
-	t.Parallel() // Parallelize the top-level test
-
 	// List of repositories to fetch data for
 	repos := []string{
 		"torvalds/linux",
@@ -76,7 +74,6 @@ func TestGitHubRepoAPIStream(t *testing.T) {
 	for _, test := range tests {
 		test := test // capture range variable
 		t.Run(test.description, func(t *testing.T) {
-			t.Parallel() // Parallelize each subtest
 
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()

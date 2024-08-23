@@ -41,6 +41,8 @@ jobs:
       run: go vet ./...
  
     - name: Run tests
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: go test ./...
 
     # Only run the build if it's either a push event or a PR in the main repository
