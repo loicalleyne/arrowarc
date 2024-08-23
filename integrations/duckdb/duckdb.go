@@ -132,11 +132,6 @@ func WriteDuckDBStream(ctx context.Context, conn adbc.Connection, tableName stri
 			return
 		}
 
-		if _, err := stmt.ExecuteUpdate(ctx); err != nil {
-			errChan <- fmt.Errorf("failed to execute update: %w", err)
-			return
-		}
-
 		for {
 			select {
 			case <-ctx.Done():
@@ -148,9 +143,10 @@ func WriteDuckDBStream(ctx context.Context, conn adbc.Connection, tableName stri
 					return
 				}
 
-				// Check if the record has rows
+				// Ensure that the record has rows
 				if record.NumRows() == 0 {
 					errChan <- fmt.Errorf("received record with no rows")
+					record.Release()
 					continue
 				}
 
@@ -159,29 +155,42 @@ func WriteDuckDBStream(ctx context.Context, conn adbc.Connection, tableName stri
 				writer := ipc.NewWriter(&buf, ipc.WithSchema(record.Schema()))
 				if err := writer.Write(record); err != nil {
 					errChan <- fmt.Errorf("failed to write record to IPC stream: %w", err)
+					record.Release()
 					return
 				}
+
 				if err := writer.Close(); err != nil {
 					errChan <- fmt.Errorf("failed to close IPC writer: %w", err)
+					record.Release()
 					return
 				}
 
 				reader, err := ipc.NewReader(&buf)
 				if err != nil {
 					errChan <- fmt.Errorf("failed to create IPC reader: %w", err)
+					record.Release()
 					return
 				}
-				defer reader.Release()
 
+				// Bind the IPC stream to the DuckDB statement
 				if err := stmt.BindStream(ctx, reader); err != nil {
 					errChan <- fmt.Errorf("failed to bind stream: %w", err)
+					reader.Release()
+					record.Release()
 					return
 				}
 
+				// Execute the statement to ingest the data
 				if _, err := stmt.ExecuteUpdate(ctx); err != nil {
 					errChan <- fmt.Errorf("failed to execute update: %w", err)
+					reader.Release()
+					record.Release()
 					return
 				}
+
+				// Clean up resources
+				reader.Release()
+				record.Release()
 			}
 		}
 	}()
