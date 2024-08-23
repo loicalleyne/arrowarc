@@ -39,3 +39,5 @@ jobs:
 
     - name: Run linters
       run: go vet ./...
+
+    if: github.repository == 'ArrowArc/ArrowArc'
