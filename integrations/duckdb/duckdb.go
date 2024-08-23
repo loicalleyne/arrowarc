@@ -40,7 +40,41 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 )
 
-func OpenDuckDBConnection(ctx context.Context, dbURL string) (adbc.Connection, error) {
+type DuckDBExtension struct {
+	Name          string
+	LoadByDefault bool
+}
+
+func DefaultExtensions() []DuckDBExtension {
+	return []DuckDBExtension{
+		{Name: "arrow", LoadByDefault: true},
+		{Name: "autocomplete", LoadByDefault: false},
+		{Name: "aws", LoadByDefault: false},
+		{Name: "azure", LoadByDefault: false},
+		{Name: "delta", LoadByDefault: false},
+		{Name: "excel", LoadByDefault: false},
+		{Name: "fts", LoadByDefault: false},
+		{Name: "httpfs", LoadByDefault: false},
+		{Name: "iceberg", LoadByDefault: false},
+		{Name: "icu", LoadByDefault: false},
+		{Name: "inet", LoadByDefault: false},
+		{Name: "jemalloc", LoadByDefault: false},
+		{Name: "json", LoadByDefault: false},
+		{Name: "motherduck", LoadByDefault: false},
+		{Name: "mysql_scanner", LoadByDefault: false},
+		{Name: "parquet", LoadByDefault: false},
+		{Name: "postgres_scanner", LoadByDefault: false},
+		{Name: "shell", LoadByDefault: false},
+		{Name: "spatial", LoadByDefault: false},
+		{Name: "sqlite_scanner", LoadByDefault: false},
+		{Name: "substrait", LoadByDefault: false},
+		{Name: "tpcds", LoadByDefault: false},
+		{Name: "tpch", LoadByDefault: false},
+		{Name: "vss", LoadByDefault: false},
+	}
+}
+
+func OpenDuckDBConnection(ctx context.Context, dbURL string, additionalExtensions []DuckDBExtension) (adbc.Connection, error) {
 	drv := drivermgr.Driver{}
 	dbConfig := map[string]string{
 		"driver":     "/usr/local/lib/libduckdb.dylib",
@@ -58,10 +92,20 @@ func OpenDuckDBConnection(ctx context.Context, dbURL string) (adbc.Connection, e
 		return nil, fmt.Errorf("failed to open connection to DuckDB database: %w", err)
 	}
 
+	allExtensions := append(DefaultExtensions(), additionalExtensions...)
+
+	for _, ext := range allExtensions {
+		if ext.LoadByDefault {
+			if err := installAndLoadExtension(conn, ext.Name); err != nil {
+				return nil, fmt.Errorf("failed to install/load extension '%s': %w", ext.Name, err)
+			}
+		}
+	}
+
 	return conn, nil
 }
 
-func ReadDuckDBStream(ctx context.Context, conn adbc.Connection, tableName string) (<-chan arrow.Record, <-chan error) {
+func ReadDuckDBStream(ctx context.Context, conn adbc.Connection, query string) (<-chan arrow.Record, <-chan error) {
 	recordChan := make(chan arrow.Record)
 	errChan := make(chan error, 1)
 
@@ -76,7 +120,6 @@ func ReadDuckDBStream(ctx context.Context, conn adbc.Connection, tableName strin
 		}
 		defer stmt.Close()
 
-		query := fmt.Sprintf("SELECT * FROM %s", tableName)
 		if err := stmt.SetSqlQuery(query); err != nil {
 			errChan <- fmt.Errorf("failed to set SQL query '%s': %w", query, err)
 			return
@@ -200,4 +243,29 @@ func WriteDuckDBStream(ctx context.Context, conn adbc.Connection, tableName stri
 
 func CloseDuckDBConnection(conn adbc.Connection) error {
 	return conn.Close()
+}
+
+func installAndLoadExtension(conn adbc.Connection, extensionName string) error {
+	if err := executeQuery(conn, fmt.Sprintf("INSTALL %s;", extensionName)); err != nil {
+		return fmt.Errorf("failed to install extension '%s': %w", extensionName, err)
+	}
+	if err := executeQuery(conn, fmt.Sprintf("LOAD %s;", extensionName)); err != nil {
+		return fmt.Errorf("failed to load extension '%s': %w", extensionName, err)
+	}
+	return nil
+}
+
+func executeQuery(conn adbc.Connection, sql string) error {
+	stmt, err := conn.NewStatement()
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	if err := stmt.SetSqlQuery(sql); err != nil {
+		return err
+	}
+
+	_, _, err = stmt.ExecuteQuery(context.Background())
+	return err
 }

@@ -20,23 +20,23 @@ ArrowArc is built with simplicity in mind. It's designed to be entirely configur
 
 ## Utility Functions
 
-ArrowArc also includes several utility functions that originated from my own need for integration testing. These utilities are designed to make it easier to work with different data sources and sinks, helping you validate and refine your configurations without extra hassle.
+ArrowArc also includes several utility functions that originated from my own need for integration testing. You're find utilities to generate various file formats on the fly, use embedded postgres and more.
 
 ---
 
 ## Getting Started
 
-ArrowArc is still very much a work in progress, but if you’re like me and enjoy experimenting with data processing, I’d love for you to give it a try.
+ArrowArc is still very much a work in progress, but if you’re like me and enjoy experimenting with data processing, I’d love to hear from you.
 
 ### Example: Streaming Data from a Parquet File
 
-Here’s a quick example of how you might use ArrowArc to stream data from a Parquet file:
+Here’s a quick example of how you might use ArrowArc to stream data from BigQuery and write it to DuckDB.s
 
 ```go
 ctx := context.Background()
 
-// Stream data from a Parquet file using a memory map in 1,000,000 record batches
-recordChan, errChan := GetParquetArrowStream(ctx, "input.parquet", true, 1000000)
+// Stream data from BigQuery
+recordChan, errChan := GetBigQueryStream(ctx, "my_project", "my_dataset", "my_table")
 
 // Handle errors
 go func() {
@@ -71,7 +71,10 @@ I’m actively working on adding new features and integrations. Here’s where t
 | **Transport**       | 🚧           |
 | **Rewrite Parquet** | ✅           |
 | **Generate Parquet**| ✅           |
-| **Convert CSV**     | ✅           |
+| **CSV To Parquet**  | ✅           |
+| **JSON To Parquet** | ✅           |
+| **Parquet to CSV**  | ✅           |
+| **Parquet to JSON** | ✅           |
 | **Sync Table**      | ❌           |
 
 ---
@@ -114,7 +117,7 @@ I’m actively working on adding new features and integrations. Here’s where t
 | **CSV**       | ✅         | ✅        |
 | **JSON**      | ✅         | ✅        |
 | **IPC**       | ✅         | ✅        |
-| **Iceberg**   | ❌         | ❌        |
+| **Iceberg**   | ✅         | ❌        |
 
 ---
 

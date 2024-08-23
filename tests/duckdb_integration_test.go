@@ -36,6 +36,7 @@ import (
 	"time"
 
 	integrations "github.com/ArrowArc/ArrowArc/integrations/duckdb"
+	helper "github.com/ArrowArc/ArrowArc/pkg/common/utils"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
@@ -52,7 +53,7 @@ func TestDuckDBIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	conn, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)
+	conn, err := integrations.OpenDuckDBConnection(ctx, dbFilePath, nil)
 	assert.NoError(t, err, "Error should be nil when opening DuckDB connection")
 	defer integrations.CloseDuckDBConnection(conn)
 
@@ -85,7 +86,7 @@ func TestDuckDBIntegration(t *testing.T) {
 		assert.NoError(t, err, "Error should be nil when writing to DuckDB")
 	}
 
-	readRecordChan, readErrChan := integrations.ReadDuckDBStream(ctx, conn, "test_table")
+	readRecordChan, readErrChan := integrations.ReadDuckDBStream(ctx, conn, "select * from test_table")
 
 	var records []arrow.Record
 	for rec := range readRecordChan {
@@ -100,6 +101,47 @@ func TestDuckDBIntegration(t *testing.T) {
 	}
 
 	assert.Len(t, records, 1, "There should be 1 record returned from DuckDB")
+
+	t.Cleanup(func() {
+		os.Remove(dbFilePath)
+	})
+}
+
+func TestDuckDBWithExtension(t *testing.T) {
+	// If testing on GitHub Actions, skip this test because DuckDB shared library is not available. TODO: Fix this.
+	if os.Getenv("CI") == "true" {
+		t.Skip("Skipping DuckDB integration test in CI environment.")
+	}
+
+	dbFilePath := ":memory:"
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Load DuckDB with the httpfs extension
+	extensions := []integrations.DuckDBExtension{
+		{Name: "httpfs", LoadByDefault: true},
+	}
+
+	conn, err := integrations.OpenDuckDBConnection(ctx, dbFilePath, extensions)
+	assert.NoError(t, err, "Error should be nil when opening DuckDB connection with extensions")
+	defer integrations.CloseDuckDBConnection(conn)
+
+	readRecordChan, readErrChan := integrations.ReadDuckDBStream(ctx, conn, `SELECT * FROM 'https://people.sc.fsu.edu/~jburkardt/data/csv/airtravel.csv'`)
+
+	var records []arrow.Record
+	for rec := range readRecordChan {
+		assert.NotNil(t, rec, "Record should not be nil when reading from HTTP resource via DuckDB")
+		records = append(records, rec)
+		helper.PrintRecordBatch(rec)
+	}
+
+	select {
+	case err := <-readErrChan:
+		assert.NoError(t, err, "Error should be nil when reading from HTTP resource via DuckDB")
+	case <-time.After(1 * time.Second):
+	}
+
+	assert.Greater(t, len(records), 0, "There should be records returned from the HTTP resource")
 
 	t.Cleanup(func() {
 		os.Remove(dbFilePath)
