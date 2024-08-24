@@ -1,6 +1,6 @@
 ![Alt text](assets/images/ArrowArcLogo.png)
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/ArrowArc/ArrowArc)](https://goreportcard.com/report/github.com/ArrowArc/ArrowArc) [![ArrowArc Build](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml/badge.svg)](https://github.com/ArrowArc/ArrowArc/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/arrowarc/arrowarc)](https://goreportcard.com/report/github.com/arrowarc/arrowarc) [![ArrowArc Build](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml/badge.svg)](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml)
 
 Welcome to ArrowArc, a hobby project born out of my passion for data processing, Go, and Apache Arrow. ArrowArc isn't trying to compete with the heavy hitters in the Big Data space—it's about seeing just how fast I can move data on modern hardware, leveraging the amazing tools we have at our disposal today.
 
@@ -68,14 +68,15 @@ I’m actively working on adding new features and integrations. Here’s where t
 
 | Utility             | Status       |
 |---------------------|--------------|
-| **Transport**       | 🚧           |
+| **Transport**       | ✅           |
+| **Sync Table**      | ❌           |
+| **Validate Table**  | ❌           |
 | **Rewrite Parquet** | ✅           |
 | **Generate Parquet**| ✅           |
 | **CSV To Parquet**  | ✅           |
 | **JSON To Parquet** | ✅           |
 | **Parquet to CSV**  | ✅           |
 | **Parquet to JSON** | ✅           |
-| **Sync Table**      | ❌           |
 
 ---
 
@@ -125,6 +126,6 @@ I’m actively working on adding new features and integrations. Here’s where t
 
 We welcome all [contributions](./CONTRIBUTING.md). Please see the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
-## :page_facing_up: License
+## License
 
 Please see the [LICENSE](./LICENSE) for more details.

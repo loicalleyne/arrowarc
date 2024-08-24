@@ -60,7 +60,7 @@ func NewPostgresSource(ctx context.Context, dbURL string) (*PostgresSource, erro
 	return &PostgresSource{conn: conn}, nil
 }
 
-func (p *PostgresSource) GetArrowStream(ctx context.Context, tableName string) (<-chan arrow.Record, <-chan error) {
+func (p *PostgresSource) GetPostgresStream(ctx context.Context, tableName string) (<-chan arrow.Record, <-chan error) {
 	recordChan := make(chan arrow.Record)
 	errChan := make(chan error, 1)
 
