@@ -34,10 +34,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"testing"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	flatbuf "github.com/arrowarc/arrowarc/internal/flatbuf"
 )
 
 func ReadIPCFileStream(ctx context.Context, filePath string) (<-chan arrow.Record, <-chan error) {
@@ -134,4 +136,32 @@ func WriteIPCFileStream(ctx context.Context, filePath string, schema *arrow.Sche
 	}()
 
 	return errChan
+}
+
+func WriteStreamCompressed(t *testing.T, f *os.File, mem memory.Allocator, schema *arrow.Schema, recs []arrow.Record, codec flatbuf.CompressionType, np int) {
+
+	opts := []ipc.Option{ipc.WithSchema(schema), ipc.WithAllocator(mem), ipc.WithCompressConcurrency(np)}
+	switch codec {
+	case flatbuf.CompressionTypeLZ4_FRAME:
+		opts = append(opts, ipc.WithLZ4())
+	case flatbuf.CompressionTypeZSTD:
+		opts = append(opts, ipc.WithZstd())
+	default:
+		t.Fatalf("invalid compression codec %v, only LZ4_FRAME or ZSTD is allowed", codec)
+	}
+
+	w := ipc.NewWriter(f, opts...)
+	defer w.Close()
+
+	for i, rec := range recs {
+		err := w.Write(rec)
+		if err != nil {
+			t.Fatalf("could not write record[%d]: %v", i, err)
+		}
+	}
+
+	err := w.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
