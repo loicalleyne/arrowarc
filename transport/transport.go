@@ -32,6 +32,7 @@ package arrowarc
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 
 	github "github.com/arrowarc/arrowarc/internal/integrations/api/github"
@@ -39,7 +40,6 @@ import (
 	duckdb "github.com/arrowarc/arrowarc/internal/integrations/duckdb"
 	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
 	postgres "github.com/arrowarc/arrowarc/internal/integrations/postgres"
-	config "github.com/arrowarc/arrowarc/pkg/common/config"
 )
 
 func TransportParquetToDuckDB(ctx context.Context, parquetFilePath, dbFilePath, tableName string) error {
@@ -247,7 +247,11 @@ func TransportGitHubToDuckDB(ctx context.Context, repos []string, NewGitHubClien
 	}
 	defer duckdb.CloseDuckDBConnection(conn)
 
-	client := github.NewGitHubClient(ctx, config.GitHubAPI)
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	if githubToken == "" {
+		return fmt.Errorf("GITHUB_TOKEN environment variable is not set")
+	}
+	client := github.NewGitHubClient(ctx, githubToken)
 
 	recordChan, errChan := github.ReadGitHubRepoAPIStream(ctx, repos, client)
 
