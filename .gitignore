@@ -34,3 +34,5 @@ data/
 logs/
 scratch/
 pkg/common/config/secrets.go
+.env
+assets/keys/

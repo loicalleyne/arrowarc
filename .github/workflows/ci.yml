@@ -45,5 +45,5 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: go test ./...
 
-    # Only run the build if it's a PR in the main repository
-    if: github.event_name == 'pull_request' && github.repository == 'arrowarc/arrowarc'
+    # Only run the build if it's either a push event or a PR in the main repository
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.repository == 'arrowrc/arrowarc')
