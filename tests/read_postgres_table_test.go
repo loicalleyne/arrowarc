@@ -36,7 +36,7 @@ import (
 	"testing"
 	"time"
 
-	integrations "github.com/ArrowArc/ArrowArc/internal/integrations/postgres"
+	integrations "github.com/arrowarc/arrowarc/internal/integrations/postgres"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/stretchr/testify/assert"
 )
@@ -74,7 +74,7 @@ func TestGetArrowStreamSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	recordChan, errChan := source.GetArrowStream(ctx, "test_table")
+	recordChan, errChan := source.GetPostgresStream(ctx, "test_table")
 
 	select {
 	case err := <-errChan:

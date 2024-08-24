@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	converter "github.com/arrowarc/arrowarc/pkg/convert"
+	converter "github.com/arrowarc/arrowarc/convert"
 	"github.com/docopt/docopt-go"
 )
 

@@ -35,8 +35,8 @@ import (
 	"testing"
 	"time"
 
-	github "github.com/ArrowArc/ArrowArc/internal/integrations/api/github"
-	helper "github.com/ArrowArc/ArrowArc/pkg/common/utils"
+	github "github.com/arrowarc/arrowarc/internal/integrations/api/github"
+	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -35,8 +35,8 @@ import (
 	"testing"
 	"time"
 
-	integrations "github.com/ArrowArc/ArrowArc/internal/integrations/filesystem"
-	generator "github.com/ArrowArc/ArrowArc/pkg/parquet"
+	integrations "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	generator "github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/stretchr/testify/assert"
 )
 

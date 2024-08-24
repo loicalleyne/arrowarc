@@ -35,8 +35,8 @@ import (
 	"testing"
 	"time"
 
-	converter "github.com/ArrowArc/ArrowArc/pkg/convert"
-	generator "github.com/ArrowArc/ArrowArc/pkg/parquet"
+	converter "github.com/arrowarc/arrowarc/convert"
+	generator "github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/stretchr/testify/assert"
 )
 

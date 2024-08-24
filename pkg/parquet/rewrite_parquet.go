@@ -34,7 +34,7 @@ import (
 	"fmt"
 	"sync"
 
-	filesystem "github.com/ArrowArc/ArrowArc/internal/integrations/filesystem"
+	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
 )
 
 func RewriteParquetFile(ctx context.Context, inputFilePath, outputFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool) error {
