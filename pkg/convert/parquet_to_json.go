@@ -34,8 +34,8 @@ import (
 	"fmt"
 	"sync"
 
-	filesystem "github.com/ArrowArc/ArrowArc/internal/integrations/filesystem"
 	"github.com/apache/arrow/go/v17/arrow"
+	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
 )
 
 func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, includeStructs bool) error {
