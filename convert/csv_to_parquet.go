@@ -32,27 +32,16 @@ package convert
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 
-	filesystem "github.com/ArrowArc/ArrowArc/internal/integrations/filesystem"
 	"github.com/apache/arrow/go/v17/arrow"
+	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
 )
 
-func ConvertParquetToCSV(ctx context.Context, parquetFilePath, csvFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) error {
-	recordChan, errChan := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
+func ConvertCSVToParquet(ctx context.Context, csvFilePath, parquetFilePath string, schema *arrow.Schema, hasHeader bool, chunkSize int64, delimiter rune, nullValues []string, stringsCanBeNull bool) error {
+	recordChan, errChan := filesystem.ReadCSVFileStream(ctx, csvFilePath, schema, hasHeader, chunkSize, delimiter, nullValues, stringsCanBeNull)
 
-	var schema *arrow.Schema
-	for rec := range recordChan {
-		schema = rec.Schema()
-		break
-	}
-
-	if schema == nil {
-		return fmt.Errorf("could not determine schema from Parquet file")
-	}
-
-	writeErrChan := filesystem.WriteCSVFileStream(ctx, csvFilePath, schema, recordChan, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
+	writeErrChan := filesystem.WriteParquetFileStream(ctx, parquetFilePath, recordChan)
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -63,7 +52,7 @@ func ConvertParquetToCSV(ctx context.Context, parquetFilePath, csvFilePath strin
 		defer wg.Done()
 		for err := range errChan {
 			if err != nil {
-				readErr = fmt.Errorf("error while reading Parquet file: %w", err)
+				readErr = fmt.Errorf("error while reading CSV file: %w", err)
 				return
 			}
 		}
@@ -73,7 +62,7 @@ func ConvertParquetToCSV(ctx context.Context, parquetFilePath, csvFilePath strin
 		defer wg.Done()
 		for err := range writeErrChan {
 			if err != nil {
-				writeErr = fmt.Errorf("error while writing CSV file: %w", err)
+				writeErr = fmt.Errorf("error while writing Parquet file: %w", err)
 				return
 			}
 		}

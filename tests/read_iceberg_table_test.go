@@ -35,9 +35,9 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/ArrowArc/ArrowArc/internal/integrations/filesystem"
-	helper "github.com/ArrowArc/ArrowArc/pkg/common/utils"
 	"github.com/apache/arrow/go/v17/arrow"
+	. "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -47,7 +47,7 @@ func TestReadIcebergFileStream(t *testing.T) {
 		t.Skip("Skipping Iceberg file stream test in CI environment.")
 	}
 
-	icebergFilePath := "/Users/thomasmcgeehan/ArrowArc/ArrowArc/data/iceberg/lineitem_iceberg/data"
+	icebergFilePath := "/Users/thomasmcgeehan/arrowarc/arrowarc/data/iceberg/lineitem_iceberg/data"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

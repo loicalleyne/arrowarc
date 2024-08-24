@@ -33,8 +33,8 @@ import (
 	"context"
 	"fmt"
 
-	duckdb "github.com/ArrowArc/ArrowArc/internal/integrations/duckdb"
 	"github.com/apache/arrow/go/v17/arrow"
+	duckdb "github.com/arrowarc/arrowarc/internal/integrations/duckdb"
 )
 
 func ReadIcebergFileStream(ctx context.Context, filePath string) (<-chan arrow.Record, <-chan error) {
