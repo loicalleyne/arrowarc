@@ -32,7 +32,7 @@ package main
 import (
 	"log"
 
-	generator "github.com/ArrowArc/ArrowArc/pkg/parquet"
+	generator "github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/docopt/docopt-go"
 )
 
