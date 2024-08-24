@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 
-	pq "github.com/ArrowArc/ArrowArc/pkg/parquet"
+	pq "github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/docopt/docopt-go"
 )
 

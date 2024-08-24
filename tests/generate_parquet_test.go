@@ -33,7 +33,7 @@ import (
 	"os"
 	"testing"
 
-	. "github.com/ArrowArc/ArrowArc/pkg/parquet"
+	. "github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/stretchr/testify/assert"
 )
 
