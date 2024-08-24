@@ -36,9 +36,9 @@ import (
 	"fmt"
 	"net/http"
 
-	config "github.com/ArrowArc/ArrowArc/pkg/common/config"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
+	config "github.com/arrowarc/arrowarc/pkg/common/config"
 )
 
 func ReadWeatherAPIStream(ctx context.Context, cities []config.City) (<-chan arrow.Record, <-chan error) {
