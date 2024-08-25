@@ -32,59 +32,20 @@ package convert
 import (
 	"context"
 	"fmt"
-	"sync"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
 )
 
 func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, includeStructs bool) error {
-	recordChan, errChan := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
-
-	var schema *arrow.Schema
-	for rec := range recordChan {
-		schema = rec.Schema()
-		break
+	reader, err := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
+	if err != nil {
+		return fmt.Errorf("error while creating Parquet reader: %w", err)
 	}
 
-	if schema == nil {
-		return fmt.Errorf("could not determine schema from Parquet file")
+	err = filesystem.WriteJSONFileStream(ctx, jsonFilePath, reader)
+	if err != nil {
+		return fmt.Errorf("error while creating JSON writer: %w", err)
 	}
 
-	writeErrChan := filesystem.WriteJSONFileStream(ctx, jsonFilePath, recordChan)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	var readErr, writeErr error
-
-	go func() {
-		defer wg.Done()
-		for err := range errChan {
-			if err != nil {
-				readErr = fmt.Errorf("error while reading Parquet file: %w", err)
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		for err := range writeErrChan {
-			if err != nil {
-				writeErr = fmt.Errorf("error while writing JSON file: %w", err)
-				return
-			}
-		}
-	}()
-
-	wg.Wait()
-
-	if readErr != nil {
-		return readErr
-	}
-	if writeErr != nil {
-		return writeErr
-	}
-	return nil
+	return err
 }

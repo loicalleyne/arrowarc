@@ -112,7 +112,7 @@ func TestConvertCSVToParquet(t *testing.T) {
 	for _, test := range tests {
 		test := test // capture range variable
 		t.Run(test.description, func(t *testing.T) {
-			// t.Parallel() // Parallelize each subtest
+			t.Parallel() // Parallelize each subtest
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()

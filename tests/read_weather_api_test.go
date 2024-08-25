@@ -31,43 +31,50 @@ package test
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 
-	weather "github.com/arrowarc/arrowarc/internal/integrations/api/weather"
+	weather "github.com/arrowarc/arrowarc/integrations/api/weather"
 	config "github.com/arrowarc/arrowarc/pkg/common/config"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestWeatherAPIStream(t *testing.T) {
+	// Define the list of cities to fetch data for
 	cities := []config.City{
 		{Name: "New York", Latitude: 40.7128, Longitude: -74.0060},
 		{Name: "Tokyo", Latitude: 35.6895, Longitude: 139.6917},
 		{Name: "London", Latitude: 51.5074, Longitude: -0.1278},
 	}
 
+	// Set up a context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	recordChan, errChan := weather.ReadWeatherAPIStream(ctx, cities)
+	// Create a new HTTP client
+	client := http.DefaultClient
 
-	errs := make(chan error)
-	go func() {
-		for err := range errChan {
-			if err != nil {
-				errs <- err
-			}
+	// Create a new WeatherAPIReader
+	reader, err := weather.NewWeatherAPIReader(ctx, cities, client)
+	assert.NoError(t, err, "Error should be nil when creating Weather API reader")
+
+	// Read records from the Weather API
+	var recordsRead int
+	for {
+		record, err := reader.Read()
+		if err == context.Canceled || err == io.EOF {
+			break
 		}
-		close(errs)
-	}()
+		assert.NoError(t, err, "Error should be nil when reading from Weather API stream")
 
-	for record := range recordChan {
 		assert.NotNil(t, record, "Record should not be nil")
 		helper.PrintRecordBatch(record)
+		recordsRead += int(record.NumRows())
+		record.Release() // Release the record after processing
 	}
 
-	for err := range errs {
-		assert.NoError(t, err, "Error should be nil when reading weather API stream")
-	}
+	assert.Greater(t, recordsRead, 0, "Should have read at least one record")
 }

@@ -32,63 +32,70 @@ package github
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/arrowarc/arrowarc/internal/arrio"
 	"github.com/google/go-github/v64/github"
 	"golang.org/x/oauth2"
 )
 
-func ReadGitHubRepoAPIStream(ctx context.Context, repos []string, client *github.Client) (<-chan arrow.Record, <-chan error) {
-	recordChan := make(chan arrow.Record)
-	errChan := make(chan error, 1)
+type GitHubAPIReader struct {
+	repos        []string
+	client       *github.Client
+	allocator    memory.Allocator
+	schema       *arrow.Schema
+	currentIndex int
+}
 
-	go func() {
-		defer close(recordChan)
-		defer close(errChan)
+func NewGitHubAPIReader(repos []string, client *github.Client) arrio.Reader {
+	allocator := memory.NewGoAllocator()
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "name", Type: arrow.BinaryTypes.String},
+		{Name: "owner", Type: arrow.BinaryTypes.String},
+		{Name: "description", Type: arrow.BinaryTypes.String},
+		{Name: "stars", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "forks", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "language", Type: arrow.BinaryTypes.String},
+	}, nil)
 
-		allocator := memory.NewGoAllocator()
+	return &GitHubAPIReader{
+		repos:        repos,
+		client:       client,
+		allocator:    allocator,
+		schema:       schema,
+		currentIndex: 0,
+	}
+}
 
-		schema := arrow.NewSchema([]arrow.Field{
-			{Name: "name", Type: arrow.BinaryTypes.String},
-			{Name: "owner", Type: arrow.BinaryTypes.String},
-			{Name: "description", Type: arrow.BinaryTypes.String},
-			{Name: "stars", Type: arrow.PrimitiveTypes.Int32},
-			{Name: "forks", Type: arrow.PrimitiveTypes.Int32},
-			{Name: "language", Type: arrow.BinaryTypes.String},
-		}, nil)
+func (r *GitHubAPIReader) Read() (arrow.Record, error) {
+	if r.currentIndex >= len(r.repos) {
+		return nil, io.EOF
+	}
 
-		for _, repo := range repos {
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			default:
-			}
+	repo := r.repos[r.currentIndex]
+	r.currentIndex++
 
-			repoInfo, err := fetchGitHubRepoData(ctx, repo, client)
-			if err != nil {
-				errChan <- err
-				return
-			}
-			b := array.NewRecordBuilder(allocator, schema)
-			defer b.Release()
+	repoInfo, err := fetchGitHubRepoData(context.Background(), repo, r.client)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching GitHub repo data: %w", err)
+	}
 
-			b.Field(0).(*array.StringBuilder).Append(repoInfo.GetName())
-			b.Field(1).(*array.StringBuilder).Append(repoInfo.GetOwner().GetLogin())
-			b.Field(2).(*array.StringBuilder).Append(repoInfo.GetDescription())
-			b.Field(3).(*array.Int32Builder).Append(int32(repoInfo.GetStargazersCount()))
-			b.Field(4).(*array.Int32Builder).Append(int32(repoInfo.GetForksCount()))
-			b.Field(5).(*array.StringBuilder).Append(repoInfo.GetLanguage())
+	b := array.NewRecordBuilder(r.allocator, r.schema)
+	defer b.Release()
 
-			record := b.NewRecord()
-			recordChan <- record
-		}
-	}()
+	b.Field(0).(*array.StringBuilder).Append(repoInfo.GetName())
+	b.Field(1).(*array.StringBuilder).Append(repoInfo.GetOwner().GetLogin())
+	b.Field(2).(*array.StringBuilder).Append(repoInfo.GetDescription())
+	b.Field(3).(*array.Int32Builder).Append(int32(repoInfo.GetStargazersCount()))
+	b.Field(4).(*array.Int32Builder).Append(int32(repoInfo.GetForksCount()))
+	b.Field(5).(*array.StringBuilder).Append(repoInfo.GetLanguage())
 
-	return recordChan, errChan
+	record := b.NewRecord()
+	return record, nil
 }
 
 func fetchGitHubRepoData(ctx context.Context, repo string, client *github.Client) (*github.Repository, error) {
@@ -115,4 +122,9 @@ func NewGitHubClient(ctx context.Context, token string) *github.Client {
 	)
 	tc := oauth2.NewClient(ctx, ts)
 	return github.NewClient(tc)
+}
+
+func (r *GitHubAPIReader) Close() error {
+	// No resources to release in this implementation
+	return nil
 }

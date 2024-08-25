@@ -31,40 +31,43 @@ package test
 
 import (
 	"context"
-	"io"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/apache/arrow/go/v17/arrow"
 	bigquery "github.com/arrowarc/arrowarc/integrations/bigquery"
-	"github.com/arrowarc/arrowarc/pkg/common/utils"
+	arrdata "github.com/arrowarc/arrowarc/internal/arrdata"
+	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestReadBigQueryStream(t *testing.T) {
-	utils.LoadEnv()
-	// Skip this test in CI environment if GCP credentials are not set
+func TestWriteArrowRecordsToBigQuery(t *testing.T) {
+	// Load environment variables
+	helper.LoadEnv()
+	serviceAccountJSON := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+	// Skip test in CI environment if GCP credentials are not set
 	if os.Getenv("CI") == "true" || os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
 		t.Skip("Skipping BigQuery integration test in CI environment or when GCP credentials are not set.")
 	}
 
+	if serviceAccountJSON == "" {
+		t.Fatal("Service account JSON not provided")
+	}
+
 	t.Parallel()
 
+	// BigQuery table details
 	projectID := "tfmv-371720"
 	datasetID := "tpch"
 	tableID := "region"
 
 	tests := []struct {
-		projectID   string
-		datasetID   string
-		tableID     string
 		description string
 	}{
 		{
-			projectID:   projectID,
-			datasetID:   datasetID,
-			tableID:     tableID,
-			description: "Read from BigQuery table",
+			description: "Write to BigQuery table",
 		},
 	}
 
@@ -76,25 +79,55 @@ func TestReadBigQueryStream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
-			bq, err := bigquery.NewBigQueryReadClient(ctx)
-			assert.NoError(t, err, "Error should be nil when creating BigQuery connector")
+			// Define Arrow schema
+			schema := arrow.NewSchema([]arrow.Field{
+				{Name: "regionkey", Type: arrow.PrimitiveTypes.Int64},
+				{Name: "name", Type: arrow.BinaryTypes.String},
+			}, nil)
 
-			reader, err := bq.NewBigQueryArrowReader(ctx, test.projectID, test.datasetID, test.tableID)
+			// Initialize BigQuery write client with schema
+			bqClient, err := bigquery.NewBigQueryWriteClient(ctx, serviceAccountJSON, schema)
+			assert.NoError(t, err, "Error should be nil when creating BigQuery write client")
+
+			// Prepare Arrow records
+			records := arrdata.MakeRegionRecords()
+			fmt.Printf("Number of records created: %d\n", len(records)) // Log the number of records created
+
+			// Create a new BigQuery writer using the updated interface
+			writer, err := bigquery.NewBigQueryRecordWriter(ctx, bqClient, projectID, datasetID, tableID, nil)
+			assert.NoError(t, err, "Error should be nil when creating BigQuery record writer")
+
+			for _, record := range records {
+				fmt.Printf("Generated Record: %v\n", record)
+				err := writer.Write(record)
+				assert.NoError(t, err, "Error should be nil when writing record to BigQuery")
+				record.Release()
+			}
+
+			assert.NoError(t, err, "Error should be nil when closing BigQuery record writer")
+
+			// Verify data written to BigQuery
+			readClient, err := bigquery.NewBigQueryReadClient(ctx)
+			assert.NoError(t, err, "Error should be nil when creating BigQuery read client")
+
+			recordReader, err := readClient.NewBigQueryArrowReader(ctx, projectID, datasetID, tableID)
 			assert.NoError(t, err, "Error should be nil when creating BigQuery Arrow reader")
 
 			var recordsRead int
 			for {
-				record, err := reader.Read()
-				if err == io.EOF {
+				rec, err := recordReader.Read()
+				if err != nil {
+					assert.NoError(t, err, "Error should be nil when reading from BigQuery table")
 					break
 				}
-				assert.NoError(t, err, "Error should be nil when reading from BigQuery table")
-				assert.NotNil(t, record, "Record should not be nil")
-				recordsRead += int(record.NumRows())
-				record.Release()
+				assert.NotNil(t, rec, "Record should not be nil")
+				recordsRead += int(rec.NumRows())
+				rec.Release()
 			}
 
 			assert.Greater(t, recordsRead, 0, "Should have read at least one record")
+			assert.NoError(t, err, "Error should be nil when closing BigQuery record writer")
+
 		})
 	}
 }

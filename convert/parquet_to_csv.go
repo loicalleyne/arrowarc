@@ -32,60 +32,74 @@ package convert
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
-	"sync"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
 )
 
 func ConvertParquetToCSV(ctx context.Context, parquetFilePath, csvFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) error {
-	recordChan, errChan := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
-
-	var schema *arrow.Schema
-	for rec := range recordChan {
-		schema = rec.Schema()
-		break
+	reader, err := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
+	if err != nil {
+		return fmt.Errorf("error while creating Parquet reader: %w", err)
 	}
 
-	if schema == nil {
-		return fmt.Errorf("could not determine schema from Parquet file")
-	}
-
-	writeErrChan := filesystem.WriteCSVFileStream(ctx, csvFilePath, schema, recordChan, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	var readErr, writeErr error
-
-	go func() {
-		defer wg.Done()
-		for err := range errChan {
-			if err != nil {
-				readErr = fmt.Errorf("error while reading Parquet file: %w", err)
-				return
-			}
+	// Read the first record to extract the schema
+	firstRecord, err := reader.Read()
+	if err != nil {
+		if err == io.EOF {
+			return fmt.Errorf("no records found in the Parquet file")
 		}
-	}()
+		return fmt.Errorf("error reading the first record from Parquet file: %w", err)
+	}
+	schema := firstRecord.Schema()
 
-	go func() {
-		defer wg.Done()
-		for err := range writeErrChan {
-			if err != nil {
-				writeErr = fmt.Errorf("error while writing CSV file: %w", err)
-				return
+	// Filter the schema if specific columns are provided
+	if len(columns) > 0 {
+		schema = filterSchema(schema, columns)
+	}
+
+	writer, err := filesystem.NewCSVRecordWriter(ctx, csvFilePath, schema, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
+	if err != nil {
+		firstRecord.Release()
+		return fmt.Errorf("error while creating CSV writer: %w", err)
+	}
+
+	if err := writer.Write(firstRecord); err != nil {
+		firstRecord.Release()
+		return fmt.Errorf("error writing the first record to CSV file: %w", err)
+	}
+	firstRecord.Release()
+
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
 			}
+			return fmt.Errorf("error reading from Parquet file: %w", err)
 		}
-	}()
 
-	wg.Wait()
+		if err := writer.Write(record); err != nil {
+			return fmt.Errorf("error writing to CSV file: %w", err)
+		}
 
-	if readErr != nil {
-		return readErr
+		record.Release()
 	}
-	if writeErr != nil {
-		return writeErr
-	}
+
 	return nil
+}
+
+func filterSchema(schema *arrow.Schema, columns []string) *arrow.Schema {
+	fields := make([]arrow.Field, 0, len(columns))
+	for _, col := range columns {
+		for _, field := range schema.Fields() {
+			if field.Name == col {
+				fields = append(fields, field)
+				break
+			}
+		}
+	}
+	return arrow.NewSchema(fields, nil)
 }

@@ -31,26 +31,27 @@ package test
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
 
-	integrations "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
-	generator "github.com/arrowarc/arrowarc/pkg/parquet"
+	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestReadParquetFileStream(t *testing.T) {
 	// Skip this test in CI environment
 	if os.Getenv("CI") == "true" {
-		t.Skip("Skipping DuckDB integration test in CI environment.")
+		t.Skip("Skipping Parquet integration test in CI environment.")
 	}
 
 	t.Parallel() // Parallelize the top-level test
 
 	// Generate a sample Parquet file for testing
 	filePath := "sample_test.parquet"
-	err := generator.GenerateParquetFile(filePath, 100*1024, false) // 100 KB, simple structure
+	err := parquet.GenerateParquetFile(filePath, 100*1024, false) // 100 KB, simple structure
 	assert.NoError(t, err, "Error should be nil when generating Parquet file")
 
 	// Use t.Cleanup to ensure the file is removed after all tests complete
@@ -104,17 +105,23 @@ func TestReadParquetFileStream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			recordChan, errChan := integrations.ReadParquetFileStream(ctx, test.filePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel)
+			// Call the refactored ReadParquetFileStream function
+			reader, err := integrations.ReadParquetFileStream(ctx, test.filePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel)
+			assert.NoError(t, err, "Error should be nil when creating Parquet reader")
 
 			var recordsRead int
-			for record := range recordChan {
+			for {
+				record, err := reader.Read()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					assert.NoError(t, err, "Error should be nil when reading Parquet file")
+				}
+
 				assert.NotNil(t, record, "Record should not be nil")
 				recordsRead += int(record.NumRows())
 				record.Release()
-			}
-
-			for err := range errChan {
-				assert.NoError(t, err, "Error should be nil when reading Parquet file")
 			}
 
 			assert.Greater(t, recordsRead, 0, "Should have read at least one record")

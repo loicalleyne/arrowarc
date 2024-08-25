@@ -31,11 +31,12 @@ package test
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
 
-	github "github.com/arrowarc/arrowarc/internal/integrations/api/github"
+	github "github.com/arrowarc/arrowarc/integrations/api/github"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -50,7 +51,7 @@ func TestGitHubRepoAPIStream(t *testing.T) {
 		"torvalds/linux",
 		"apple/swift",
 		"golang/go",
-		"tfmv/ArrowArc",
+		"tfmv/arrowarc",
 	}
 
 	// Retrieve the GitHub OAuth token from the environment variable
@@ -58,8 +59,6 @@ func TestGitHubRepoAPIStream(t *testing.T) {
 	if githubToken == "" {
 		t.Fatal("GITHUB_TOKEN environment variable is not set")
 	}
-
-	client := github.NewGitHubClient(context.Background(), githubToken)
 
 	tests := []struct {
 		repos       []string
@@ -78,26 +77,25 @@ func TestGitHubRepoAPIStream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 
-			recordChan, errChan := github.ReadGitHubRepoAPIStream(ctx, test.repos, client)
+			client := github.NewGitHubClient(ctx, githubToken)
+			reader := github.NewGitHubAPIReader(test.repos, client)
 
-			errs := make(chan error)
-			go func() {
-				for err := range errChan {
-					if err != nil {
-						errs <- err
-					}
+			var recordsRead int
+			for {
+				record, err := reader.Read()
+				if err == io.EOF {
+					break
 				}
-				close(errs)
-			}()
-
-			for record := range recordChan {
-				assert.NotNil(t, record, "Record should not be nil")
+				assert.NoError(t, err, "Error should be nil when reading from GitHub API stream")
+				if record == nil {
+					break
+				}
 				helper.PrintRecordBatch(record)
+				recordsRead += int(record.NumRows())
+				record.Release()
 			}
 
-			for err := range errs {
-				assert.NoError(t, err, "Error should be nil when reading GitHub API stream")
-			}
+			assert.Greater(t, recordsRead, 0, "Should have read at least one record")
 		})
 	}
 }

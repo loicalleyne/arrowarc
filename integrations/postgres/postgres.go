@@ -32,10 +32,13 @@ package integrations
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/apache/arrow-adbc/go/adbc"
 	"github.com/apache/arrow-adbc/go/adbc/drivermgr"
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
 type PostgresSource struct {
@@ -60,52 +63,53 @@ func NewPostgresSource(ctx context.Context, dbURL string) (*PostgresSource, erro
 	return &PostgresSource{conn: conn}, nil
 }
 
-func (p *PostgresSource) GetPostgresStream(ctx context.Context, tableName string) (<-chan arrow.Record, <-chan error) {
-	recordChan := make(chan arrow.Record)
-	errChan := make(chan error, 1)
+type PostgresRecordReader struct {
+	ctx       context.Context
+	stmt      adbc.Statement
+	recordSet array.RecordReader
+}
 
-	go func() {
-		defer close(recordChan)
-		defer close(errChan)
+func (p *PostgresSource) GetPostgresRecordReader(ctx context.Context, tableName string) (arrio.Reader, error) {
+	stmt, err := p.conn.NewStatement()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create statement: %w", err)
+	}
 
-		stmt, err := p.conn.NewStatement()
-		if err != nil {
-			errChan <- fmt.Errorf("failed to create statement: %w", err)
-			return
+	query := fmt.Sprintf("SELECT * FROM %s", tableName)
+	if err := stmt.SetSqlQuery(query); err != nil {
+		stmt.Close()
+		return nil, fmt.Errorf("failed to set SQL query: %w", err)
+	}
+
+	recordSet, _, err := stmt.ExecuteQuery(ctx)
+	if err != nil {
+		stmt.Close()
+		return nil, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	return &PostgresRecordReader{
+		ctx:       ctx,
+		stmt:      stmt,
+		recordSet: recordSet,
+	}, nil
+}
+
+func (r *PostgresRecordReader) Read() (arrow.Record, error) {
+	if !r.recordSet.Next() {
+		if err := r.recordSet.Err(); err != nil && err != io.EOF {
+			return nil, err
 		}
-		defer stmt.Close()
+		return nil, io.EOF
+	}
 
-		query := fmt.Sprintf("SELECT * FROM %s", tableName)
-		if err := stmt.SetSqlQuery(query); err != nil {
-			errChan <- fmt.Errorf("failed to set SQL query: %w", err)
-			return
-		}
+	record := r.recordSet.Record()
+	record.Retain()
+	return record, nil
+}
 
-		reader, _, err := stmt.ExecuteQuery(ctx)
-		if err != nil {
-			errChan <- fmt.Errorf("failed to execute query: %w", err)
-			return
-		}
-		defer reader.Release()
-
-		for reader.Next() {
-			record := reader.Record()
-			record.Retain()
-
-			select {
-			case recordChan <- record:
-			case <-ctx.Done():
-				record.Release()
-				return
-			}
-		}
-
-		if err := reader.Err(); err != nil {
-			errChan <- fmt.Errorf("error reading records: %w", err)
-		}
-	}()
-
-	return recordChan, errChan
+func (r *PostgresRecordReader) Close() error {
+	r.recordSet.Release()
+	return r.stmt.Close()
 }
 
 func (p *PostgresSource) Close() error {

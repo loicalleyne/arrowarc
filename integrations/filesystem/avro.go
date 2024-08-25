@@ -38,54 +38,50 @@ import (
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/avro"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
-func ReadAvroFileStream(ctx context.Context, filePath string, chunkSize int64) (<-chan arrow.Record, <-chan error) {
-	recordChan := make(chan arrow.Record)
-	errChan := make(chan error, 1)
+type AvroRecordReader struct {
+	reader *avro.OCFReader
+}
 
-	go func() {
-		defer close(recordChan)
-		defer close(errChan)
+func NewAvroRecordReader(ctx context.Context, filePath string, chunkSize int64) (arrio.Reader, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Avro file: %w", err)
+	}
 
-		file, err := os.Open(filePath)
-		if err != nil {
-			errChan <- fmt.Errorf("failed to open Avro file: %w", err)
-			return
+	avroReader, err := avro.NewOCFReader(file, avro.WithAllocator(memory.DefaultAllocator), avro.WithChunk(int(chunkSize)))
+	if err != nil {
+		file.Close()
+		return nil, fmt.Errorf("failed to create Avro OCF reader: %w", err)
+	}
+
+	return &AvroRecordReader{
+		reader: avroReader,
+	}, nil
+}
+
+func (r *AvroRecordReader) Read() (arrow.Record, error) {
+	if !r.reader.Next() {
+		if err := r.reader.Err(); err != nil && err != io.EOF {
+			return nil, fmt.Errorf("error reading Avro record: %w", err)
 		}
-		defer file.Close()
+		return nil, io.EOF
+	}
 
-		reader, err := avro.NewOCFReader(file, avro.WithAllocator(memory.DefaultAllocator), avro.WithChunk(int(chunkSize)))
-		if err != nil {
-			errChan <- fmt.Errorf("failed to create Avro OCF reader: %w", err)
-			return
-		}
-		defer reader.Release()
+	record := r.reader.Record()
+	if record == nil {
+		return nil, io.EOF
+	}
 
-		for {
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			default:
-			}
+	record.Retain()
+	return record, nil
+}
 
-			if !reader.Next() {
-				if err := reader.Err(); err != nil && err != io.EOF {
-					errChan <- fmt.Errorf("error reading Avro record: %w", err)
-				}
-				return
-			}
-
-			record := reader.Record()
-			if record == nil {
-				continue
-			}
-
-			record.Retain()
-			recordChan <- record
-		}
-	}()
-
-	return recordChan, errChan
+func (r *AvroRecordReader) Close() error {
+	if r.reader != nil {
+		r.reader.Release()
+	}
+	return nil
 }

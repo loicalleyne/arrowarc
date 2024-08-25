@@ -31,6 +31,7 @@ package test
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -38,7 +39,7 @@ import (
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
-	integrations "github.com/arrowarc/arrowarc/internal/integrations/duckdb"
+	integrations "github.com/arrowarc/arrowarc/integrations/duckdb"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -76,29 +77,29 @@ func TestDuckDBIntegration(t *testing.T) {
 	record := b.NewRecord()
 	defer record.Release()
 
-	recordChan := make(chan arrow.Record, 1)
-	recordChan <- record
-	close(recordChan)
+	writer, err := integrations.NewDuckDBRecordWriter(ctx, conn, "test_table")
+	assert.NoError(t, err, "Error should be nil when creating DuckDB record writer")
 
-	writeErrChan := integrations.WriteDuckDBStream(ctx, conn, "test_table", recordChan)
+	err = writer.Write(record)
+	assert.NoError(t, err, "Error should be nil when writing to DuckDB")
+	assert.NoError(t, err, "Error should be nil when closing DuckDB record writer")
 
-	for err := range writeErrChan {
-		assert.NoError(t, err, "Error should be nil when writing to DuckDB")
-	}
-
-	readRecordChan, readErrChan := integrations.ReadDuckDBStream(ctx, conn, "select * from test_table")
+	reader, err := integrations.NewDuckDBRecordReader(ctx, conn, "SELECT * FROM test_table")
+	assert.NoError(t, err, "Error should be nil when creating DuckDB record reader")
 
 	var records []arrow.Record
-	for rec := range readRecordChan {
+	for {
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		assert.NoError(t, err, "Error should be nil when reading from DuckDB")
 		assert.NotNil(t, rec, "Record should not be nil when reading from DuckDB")
 		records = append(records, rec)
+		rec.Release()
 	}
 
-	select {
-	case err := <-readErrChan:
-		assert.NoError(t, err, "Error should be nil when reading from DuckDB")
-	case <-time.After(1 * time.Second):
-	}
+	assert.NoError(t, err, "Error should be nil when closing DuckDB record reader")
 
 	assert.Len(t, records, 1, "There should be 1 record returned from DuckDB")
 
@@ -117,7 +118,6 @@ func TestDuckDBWithExtension(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Load DuckDB with the httpfs extension
 	extensions := []integrations.DuckDBExtension{
 		{Name: "httpfs", LoadByDefault: true},
 	}
@@ -126,20 +126,23 @@ func TestDuckDBWithExtension(t *testing.T) {
 	assert.NoError(t, err, "Error should be nil when opening DuckDB connection with extensions")
 	defer integrations.CloseDuckDBConnection(conn)
 
-	readRecordChan, readErrChan := integrations.ReadDuckDBStream(ctx, conn, `SELECT * FROM 'https://people.sc.fsu.edu/~jburkardt/data/csv/airtravel.csv'`)
+	reader, err := integrations.NewDuckDBRecordReader(ctx, conn, `SELECT * FROM 'https://people.sc.fsu.edu/~jburkardt/data/csv/airtravel.csv'`)
+	assert.NoError(t, err, "Error should be nil when creating DuckDB record reader")
 
 	var records []arrow.Record
-	for rec := range readRecordChan {
+	for {
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		assert.NoError(t, err, "Error should be nil when reading from DuckDB")
 		assert.NotNil(t, rec, "Record should not be nil when reading from HTTP resource via DuckDB")
 		records = append(records, rec)
 		helper.PrintRecordBatch(rec)
+		rec.Release()
 	}
 
-	select {
-	case err := <-readErrChan:
-		assert.NoError(t, err, "Error should be nil when reading from HTTP resource via DuckDB")
-	case <-time.After(1 * time.Second):
-	}
+	assert.NoError(t, err, "Error should be nil when closing DuckDB record reader")
 
 	assert.Greater(t, len(records), 0, "There should be records returned from the HTTP resource")
 

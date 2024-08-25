@@ -31,12 +31,13 @@ package test
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	. "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	. "github.com/arrowarc/arrowarc/integrations/filesystem"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -47,26 +48,29 @@ func TestReadIcebergFileStream(t *testing.T) {
 		t.Skip("Skipping Iceberg file stream test in CI environment.")
 	}
 
-	icebergFilePath := "/Users/thomasmcgeehan/arrowarc/arrowarc/data/iceberg/lineitem_iceberg/data"
+	// Publicly available Iceberg dataset (replace with an actual public URL if available)
+	icebergFilePath := "https://public-datasets.s3.amazonaws.com/iceberg/tpch/lineitem"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	recordChan, errChan := ReadIcebergFileStream(ctx, icebergFilePath)
+	reader, err := ReadIcebergFileStream(ctx, icebergFilePath)
+	assert.NoError(t, err, "Error should be nil when reading from Iceberg file stream")
 
 	var records []arrow.Record
-	for rec := range recordChan {
+	for {
+		rec, err := reader.Read()
+		if err == context.Canceled || err == io.EOF {
+			break
+		}
+		assert.NoError(t, err, "Error should be nil when reading from Iceberg file stream")
 		assert.NotNil(t, rec, "Record should not be nil when reading from Iceberg file")
 		records = append(records, rec)
-		rec.Release()
 		helper.PrintRecordBatch(rec)
-	}
-
-	select {
-	case err := <-errChan:
-		assert.NoError(t, err, "Error should be nil when reading Iceberg file stream")
-	case <-time.After(1 * time.Second):
+		rec.Release()
 	}
 
 	assert.Greater(t, len(records), 0, "There should be at least 1 record returned from the Iceberg file")
+
+	assert.NoError(t, err, "Error should be nil when closing the Iceberg file reader")
 }
