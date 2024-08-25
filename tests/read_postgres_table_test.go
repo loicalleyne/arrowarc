@@ -32,11 +32,12 @@ package test
 import (
 	"context"
 	"database/sql"
+	"io"
 	"os"
 	"testing"
 	"time"
 
-	integrations "github.com/arrowarc/arrowarc/internal/integrations/postgres"
+	integrations "github.com/arrowarc/arrowarc/integrations/postgres"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/stretchr/testify/assert"
 )
@@ -44,9 +45,10 @@ import (
 func TestGetArrowStreamSuccess(t *testing.T) {
 
 	if os.Getenv("CI") == "true" {
-		t.Skip("Skipping DuckDB integration test in CI environment.")
+		t.Skip("Skipping Postgres integration test in CI environment.")
 	}
 
+	// Start the embedded Postgres database
 	postgres := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().Port(5433))
 	err := postgres.Start()
 	assert.NoError(t, err, "Embedded Postgres should start without error")
@@ -56,34 +58,40 @@ func TestGetArrowStreamSuccess(t *testing.T) {
 		assert.NoError(t, err, "Embedded Postgres should stop without error")
 	}()
 
+	// Connect to the embedded Postgres database
 	db, err := sql.Open("postgres", "host=localhost port=5433 user=postgres password=postgres dbname=postgres sslmode=disable")
 	assert.NoError(t, err, "Should be able to connect to embedded Postgres")
 
+	// Create a test table and insert data
 	_, err = db.Exec("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT)")
 	assert.NoError(t, err, "Should be able to create test table")
 
 	_, err = db.Exec("INSERT INTO test_table (id, name) VALUES (1, 'John'), (2, 'Jane'), (3, 'Jack')")
 	assert.NoError(t, err, "Should be able to insert data into test table")
 
+	// Initialize Postgres source
 	dbURL := "postgresql://postgres:postgres@localhost:5433/postgres"
 	source, err := integrations.NewPostgresSource(context.Background(), dbURL)
 	assert.NoError(t, err, "Error should be nil when creating Postgres source")
-
 	defer source.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	recordChan, errChan := source.GetPostgresStream(ctx, "test_table")
-
-	select {
-	case err := <-errChan:
-		assert.NoError(t, err, "Error should be nil during the stream")
-	default:
-	}
+	// Get a record reader from the Postgres source
+	reader, err := source.GetPostgresRecordReader(ctx, "test_table")
+	assert.NoError(t, err, "Error should be nil when getting Postgres record reader")
 
 	var recordCount int
-	for record := range recordChan {
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			if err == context.Canceled || err == io.EOF {
+				break
+			}
+			assert.NoError(t, err, "Error should be nil when reading from Postgres stream")
+		}
+
 		assert.NotNil(t, record, "Record should not be nil")
 		recordCount += int(record.NumRows())
 		record.Release() // Ensure to release the record

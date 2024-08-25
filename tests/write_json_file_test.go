@@ -31,6 +31,7 @@ package test
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -38,44 +39,68 @@ import (
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
-	integrations "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
 	"github.com/stretchr/testify/assert"
 )
+
+// simpleRecordReader is a minimal implementation of arrio.Reader for testing purposes
+type simpleRecordReader struct {
+	records []arrow.Record
+	index   int
+}
+
+func (r *simpleRecordReader) Read() (arrow.Record, error) {
+	if r.index >= len(r.records) {
+		return nil, io.EOF
+	}
+	record := r.records[r.index]
+	r.index++
+	return record, nil
+}
+
+func (r *simpleRecordReader) Close() error {
+	// No resources to clean up in this simple implementation
+	return nil
+}
 
 func TestWriteJSONFileStream(t *testing.T) {
 	t.Parallel()
 
+	// Define the schema for the records
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
 		{Name: "name", Type: arrow.BinaryTypes.String, Nullable: true},
 	}, nil)
 
+	// Allocate memory and build the record
 	mem := memory.NewGoAllocator()
 	b := array.NewRecordBuilder(mem, schema)
 	defer b.Release()
 
+	// Populate the record with data
 	b.Field(0).(*array.Int64Builder).AppendValues([]int64{1, 2, 3}, nil)
 	b.Field(1).(*array.StringBuilder).AppendValues([]string{"John", "Jane", "Doe"}, nil)
 
+	// Create the record
 	record := b.NewRecord()
 	defer record.Release()
 
-	recordChan := make(chan arrow.Record, 1)
-	recordChan <- record
-	close(recordChan)
+	// Create a simpleRecordReader that yields this record
+	reader := &simpleRecordReader{records: []arrow.Record{record}}
 
+	// Define the output file path
 	outputFilePath := "output_test.json"
 	defer os.Remove(outputFilePath)
 
+	// Set up the context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	errChan := integrations.WriteJSONFileStream(ctx, outputFilePath, recordChan)
+	// Write the records to a JSON file using WriteJSONFileStream
+	err := integrations.WriteJSONFileStream(ctx, outputFilePath, reader)
+	assert.NoError(t, err, "Error should be nil when writing record to JSON file")
 
-	if err := <-errChan; err != nil {
-		t.Fatalf("WriteJSONFileStream encountered an error: %v", err)
-	}
-
+	// Check that the output file was created and is not empty
 	info, err := os.Stat(outputFilePath)
 	assert.NoError(t, err, "Error should be nil when checking the output file")
 	assert.Greater(t, info.Size(), int64(0), "Output JSON file should not be empty")

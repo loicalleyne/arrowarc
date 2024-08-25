@@ -31,48 +31,35 @@ package parquet
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"sync"
 
-	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
 )
 
 func RewriteParquetFile(ctx context.Context, inputFilePath, outputFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool) error {
-	recordChan, errChan := filesystem.ReadParquetFileStream(ctx, inputFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
-	writeErrChan := filesystem.WriteParquetFileStream(ctx, outputFilePath, recordChan)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	var readErr, writeErr error
-
-	go func() {
-		defer wg.Done()
-		for err := range errChan {
-			if err != nil {
-				readErr = fmt.Errorf("error while reading Parquet file: %w", err)
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		for err := range writeErrChan {
-			if err != nil {
-				writeErr = fmt.Errorf("error while writing Parquet file: %w", err)
-				return
-			}
-		}
-	}()
-
-	wg.Wait()
-
-	if readErr != nil {
-		return readErr
+	if inputFilePath == "" {
+		return errors.New("input file path cannot be empty")
 	}
-	if writeErr != nil {
-		return writeErr
+	if outputFilePath == "" {
+		return errors.New("output file path cannot be empty")
 	}
+	if chunkSize <= 0 {
+		return errors.New("chunk size must be greater than zero")
+	}
+	if ctx == nil {
+		return errors.New("context cannot be nil")
+	}
+
+	reader, err := filesystem.ReadParquetFileStream(ctx, inputFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
+	if err != nil {
+		return fmt.Errorf("failed to start reading parquet file: %s, %w", inputFilePath, err)
+	}
+
+	opts := filesystem.NewDefaultParquetWriteOptions()
+	if err := filesystem.WriteParquetFileStream(ctx, outputFilePath, reader, opts); err != nil {
+		return fmt.Errorf("error writing to parquet file: %s, %w", outputFilePath, err)
+	}
+
 	return nil
 }

@@ -31,6 +31,7 @@ package config
 
 const (
 	OpenMeteoAPIURL = "https://api.open-meteo.com/v1/forecast"
+	GithubAPIURL    = "https://api.github.com/users"
 )
 
 type City struct {

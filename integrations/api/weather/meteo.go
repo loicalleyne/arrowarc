@@ -34,76 +34,87 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/arrowarc/arrowarc/internal/arrio"
 	config "github.com/arrowarc/arrowarc/pkg/common/config"
 )
 
-func ReadWeatherAPIStream(ctx context.Context, cities []config.City) (<-chan arrow.Record, <-chan error) {
-	recordChan := make(chan arrow.Record)
-	errChan := make(chan error, 1)
-
-	go func() {
-		defer close(recordChan)
-		defer close(errChan)
-
-		schema := arrow.NewSchema([]arrow.Field{
-			{Name: "city", Type: arrow.BinaryTypes.String},
-			{Name: "latitude", Type: arrow.PrimitiveTypes.Float64},
-			{Name: "longitude", Type: arrow.PrimitiveTypes.Float64},
-			{Name: "temperature", Type: arrow.PrimitiveTypes.Float64},
-		}, nil)
-
-		for _, city := range cities {
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			default:
-			}
-
-			jsonData, err := fetchWeatherData(ctx, city.Latitude, city.Longitude)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			jsonDataBytes, err := json.Marshal(jsonData)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			jsonReader := array.NewJSONReader(bytes.NewReader(jsonDataBytes), schema)
-			if jsonReader == nil {
-				errChan <- fmt.Errorf("failed to create JSON reader")
-				return
-			}
-			defer jsonReader.Release()
-
-			for jsonReader.Next() {
-				record := jsonReader.Record()
-				if record == nil {
-					continue
-				}
-
-				record.Retain()
-				recordChan <- record
-			}
-
-			if err := jsonReader.Err(); err != nil {
-				errChan <- err
-				return
-			}
-		}
-	}()
-
-	return recordChan, errChan
+type WeatherAPIReader struct {
+	ctx      context.Context
+	cities   []config.City
+	client   *http.Client
+	schema   *arrow.Schema
+	currCity int
 }
 
-func fetchWeatherData(ctx context.Context, latitude, longitude float64) (map[string]interface{}, error) {
+func NewWeatherAPIReader(ctx context.Context, cities []config.City, client *http.Client) (arrio.Reader, error) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "city", Type: arrow.BinaryTypes.String},
+		{Name: "latitude", Type: arrow.PrimitiveTypes.Float64},
+		{Name: "longitude", Type: arrow.PrimitiveTypes.Float64},
+		{Name: "temperature", Type: arrow.PrimitiveTypes.Float64},
+	}, nil)
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	return &WeatherAPIReader{
+		ctx:      ctx,
+		cities:   cities,
+		client:   client,
+		schema:   schema,
+		currCity: 0,
+	}, nil
+}
+
+func (r *WeatherAPIReader) Read() (arrow.Record, error) {
+	if r.currCity >= len(r.cities) {
+		return nil, io.EOF
+	}
+
+	city := r.cities[r.currCity]
+	r.currCity++
+
+	jsonData, err := fetchWeatherData(r.ctx, city.Latitude, city.Longitude, r.client)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonDataBytes, err := json.Marshal(jsonData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal JSON data: %w", err)
+	}
+
+	jsonReader := array.NewJSONReader(bytes.NewReader(jsonDataBytes), r.schema)
+	if jsonReader == nil {
+		return nil, fmt.Errorf("failed to create JSON reader")
+	}
+	defer jsonReader.Release()
+
+	if jsonReader.Next() {
+		record := jsonReader.Record()
+		record.Retain() // Retain the record to ensure it stays valid after returning
+		return record, nil
+	}
+
+	if err := jsonReader.Err(); err != nil {
+		return nil, err
+	}
+
+	return nil, io.EOF
+}
+
+func (r *WeatherAPIReader) Close() error {
+	// Release any resources if necessary
+	return nil
+}
+
+func fetchWeatherData(ctx context.Context, latitude, longitude float64, client *http.Client) (map[string]interface{}, error) {
 	url := fmt.Sprintf("%s?latitude=%.4f&longitude=%.4f&hourly=temperature_2m&current_weather=true", config.OpenMeteoAPIURL, latitude, longitude)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -111,7 +122,7 @@ func fetchWeatherData(ctx context.Context, latitude, longitude float64) (map[str
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call Open-Meteo API: %w", err)
 	}

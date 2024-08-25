@@ -33,11 +33,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	duckdb "github.com/arrowarc/arrowarc/internal/integrations/duckdb"
+	duckdb "github.com/arrowarc/arrowarc/integrations/duckdb"
+	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
-func ReadIcebergFileStream(ctx context.Context, filePath string) (<-chan arrow.Record, <-chan error) {
+// ReadIcebergFileStream reads data from an Iceberg file using DuckDB and returns an arrio.Reader.
+func ReadIcebergFileStream(ctx context.Context, filePath string) (arrio.Reader, error) {
 	extensions := []duckdb.DuckDBExtension{
 		{Name: "httpfs", LoadByDefault: true},
 		{Name: "iceberg", LoadByDefault: true},
@@ -45,9 +46,7 @@ func ReadIcebergFileStream(ctx context.Context, filePath string) (<-chan arrow.R
 
 	conn, err := duckdb.OpenDuckDBConnection(ctx, "", extensions)
 	if err != nil {
-		errChan := make(chan error, 1)
-		close(errChan)
-		return nil, errChan
+		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 
 	go func() {
@@ -57,5 +56,11 @@ func ReadIcebergFileStream(ctx context.Context, filePath string) (<-chan arrow.R
 
 	query := fmt.Sprintf("SELECT * FROM iceberg_scan('%s')", filePath)
 
-	return duckdb.ReadDuckDBStream(ctx, conn, query)
+	reader, err := duckdb.NewDuckDBRecordReader(ctx, conn, query)
+	if err != nil {
+		duckdb.CloseDuckDBConnection(conn)
+		return nil, fmt.Errorf("failed to create DuckDB record reader: %w", err)
+	}
+
+	return reader, nil
 }

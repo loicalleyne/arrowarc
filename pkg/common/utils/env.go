@@ -31,13 +31,29 @@ package utils
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 )
 
 func LoadEnv() {
-	err := godotenv.Load("/Users/thomasmcgeehan/ArrowArc/arrowarc/.env")
+	defaultEnvPath := "/Users/thomasmcgeehan/ArrowArc/arrowarc/.env"
+
+	envPath := os.Getenv("ARROWARC_ENV_PATH")
+	if envPath == "" {
+		envPath = defaultEnvPath
+	}
+
+	absEnvPath, err := filepath.Abs(envPath)
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+		log.Printf("Error resolving absolute path for .env file: %v", err)
+		return
+	}
+
+	if err := godotenv.Load(absEnvPath); err != nil {
+		log.Printf("Warning: Could not load .env file from %s: %v", absEnvPath, err)
+	} else {
+		log.Printf("Successfully loaded .env file from %s", absEnvPath)
 	}
 }

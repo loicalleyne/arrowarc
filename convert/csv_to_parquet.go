@@ -32,49 +32,21 @@ package convert
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	filesystem "github.com/arrowarc/arrowarc/internal/integrations/filesystem"
+	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
 )
 
 func ConvertCSVToParquet(ctx context.Context, csvFilePath, parquetFilePath string, schema *arrow.Schema, hasHeader bool, chunkSize int64, delimiter rune, nullValues []string, stringsCanBeNull bool) error {
-	recordChan, errChan := filesystem.ReadCSVFileStream(ctx, csvFilePath, schema, hasHeader, chunkSize, delimiter, nullValues, stringsCanBeNull)
-
-	writeErrChan := filesystem.WriteParquetFileStream(ctx, parquetFilePath, recordChan)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	var readErr, writeErr error
-
-	go func() {
-		defer wg.Done()
-		for err := range errChan {
-			if err != nil {
-				readErr = fmt.Errorf("error while reading CSV file: %w", err)
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		for err := range writeErrChan {
-			if err != nil {
-				writeErr = fmt.Errorf("error while writing Parquet file: %w", err)
-				return
-			}
-		}
-	}()
-
-	wg.Wait()
-
-	if readErr != nil {
-		return readErr
+	reader, err := filesystem.NewCSVRecordReader(ctx, csvFilePath, schema, hasHeader, chunkSize, delimiter, nullValues, stringsCanBeNull)
+	if err != nil {
+		return fmt.Errorf("error while creating CSV reader: %w", err)
 	}
-	if writeErr != nil {
-		return writeErr
+
+	err = filesystem.WriteParquetFileStream(ctx, parquetFilePath, reader, filesystem.NewDefaultParquetWriteOptions())
+	if err != nil {
+		return fmt.Errorf("error while writing Parquet file: %w", err)
 	}
+
 	return nil
 }

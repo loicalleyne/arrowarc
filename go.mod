@@ -11,14 +11,16 @@ require (
 	github.com/fergusstrange/embedded-postgres v1.28.0
 	github.com/go-faker/faker/v4 v4.4.2
 	github.com/goccy/go-json v0.10.3
+	github.com/golang/protobuf v1.5.4
 	github.com/google/flatbuffers v24.3.25+incompatible
-	github.com/google/go-cmp v0.6.0
 	github.com/google/go-github/v64 v64.0.0
+	github.com/googleapis/gax-go/v2 v2.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/oauth2 v0.22.0
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028
 	google.golang.org/api v0.194.0
+	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
 )
 
@@ -41,7 +43,6 @@ require (
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
-	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
 	github.com/hamba/avro/v2 v2.22.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/asmfmt v1.3.2 // indirect
@@ -79,6 +80,5 @@ require (
 	google.golang.org/genproto v0.0.0-20240814211410-ddb44dafa142 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240730163845-b1a4ccb954bf // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240814211410-ddb44dafa142 // indirect
-	google.golang.org/grpc v1.65.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -37,11 +37,11 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
-	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/csv"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/parquet"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/arrowarc/arrowarc/internal/arrio"
 	"google.golang.org/api/option"
 )
 
@@ -57,7 +57,7 @@ type GCSSink struct {
 	bucketName string
 }
 
-func NewGCSSink(ctx context.Context, bucketName string, credsFile string) (*GCSSink, error) {
+func NewGCSSink(ctx context.Context, bucketName, credsFile string) (*GCSSink, error) {
 	client, err := storage.NewClient(ctx, option.WithCredentialsFile(credsFile))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create GCS client: %w", err)
@@ -69,7 +69,7 @@ func NewGCSSink(ctx context.Context, bucketName string, credsFile string) (*GCSS
 	}, nil
 }
 
-func (s *GCSSink) WriteToGCS(ctx context.Context, recordChan <-chan arrow.Record, filePath string, format FileFormat, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) <-chan error {
+func (s *GCSSink) WriteToGCS(ctx context.Context, reader arrio.Reader, filePath string, format FileFormat, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) <-chan error {
 	errChan := make(chan error, 1)
 
 	go func() {
@@ -78,14 +78,18 @@ func (s *GCSSink) WriteToGCS(ctx context.Context, recordChan <-chan arrow.Record
 		bucket := s.client.Bucket(s.bucketName)
 		obj := bucket.Object(filePath)
 		writer := obj.NewWriter(ctx)
-		defer writer.Close()
+		defer func() {
+			if cerr := writer.Close(); cerr != nil && errChan != nil {
+				errChan <- fmt.Errorf("failed to close GCS writer: %w", cerr)
+			}
+		}()
 
 		var err error
 		switch format {
 		case ParquetFormat:
-			err = s.writeParquet(ctx, recordChan, writer)
+			err = s.writeParquet(ctx, reader, writer)
 		case CSVFormat:
-			err = s.writeCSV(ctx, recordChan, writer, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
+			err = s.writeCSV(ctx, reader, writer, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
 		default:
 			err = fmt.Errorf("unsupported file format: %s", format)
 		}
@@ -98,9 +102,8 @@ func (s *GCSSink) WriteToGCS(ctx context.Context, recordChan <-chan arrow.Record
 	return errChan
 }
 
-func (s *GCSSink) writeParquet(ctx context.Context, recordChan <-chan arrow.Record, writer io.Writer) error {
+func (s *GCSSink) writeParquet(ctx context.Context, reader arrio.Reader, writer io.Writer) error {
 	mem := memory.NewGoAllocator()
-	var schema *arrow.Schema
 	var parquetWriter *pqarrow.FileWriter
 	defer func() {
 		if parquetWriter != nil {
@@ -112,61 +115,70 @@ func (s *GCSSink) writeParquet(ctx context.Context, recordChan <-chan arrow.Reco
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case record, ok := <-recordChan:
-			if !ok {
+		default:
+		}
+
+		record, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
 				return nil
 			}
+			return fmt.Errorf("failed to read record: %w", err)
+		}
 
-			if schema == nil {
-				schema = record.Schema()
-				writerProps := parquet.NewWriterProperties(parquet.WithAllocator(mem), parquet.WithMaxRowGroupLength(math.MaxInt64))
-				var err error
-				parquetWriter, err = pqarrow.NewFileWriter(schema, writer, writerProps, pqarrow.DefaultWriterProps())
-				if err != nil {
-					return fmt.Errorf("failed to create Parquet writer: %w", err)
-				}
+		if parquetWriter == nil {
+			schema := record.Schema()
+			writerProps := parquet.NewWriterProperties(parquet.WithAllocator(mem), parquet.WithMaxRowGroupLength(math.MaxInt64))
+			parquetWriter, err = pqarrow.NewFileWriter(schema, writer, writerProps, pqarrow.DefaultWriterProps())
+			if err != nil {
+				return fmt.Errorf("failed to create Parquet writer: %w", err)
 			}
+		}
 
-			if err := parquetWriter.Write(record); err != nil {
-				return fmt.Errorf("failed to write record to Parquet: %w", err)
-			}
+		if err := parquetWriter.Write(record); err != nil {
+			return fmt.Errorf("failed to write record to Parquet: %w", err)
 		}
 	}
 }
 
-func (s *GCSSink) writeCSV(ctx context.Context, recordChan <-chan arrow.Record, writer io.Writer, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) error {
+func (s *GCSSink) writeCSV(ctx context.Context, reader arrio.Reader, writer io.Writer, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) error {
 	var csvWriter *csv.Writer
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case record, ok := <-recordChan:
-			if !ok {
+		default:
+		}
+
+		record, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
 				if csvWriter != nil {
 					csvWriter.Flush()
 				}
 				return nil
 			}
+			return fmt.Errorf("failed to read record: %w", err)
+		}
 
-			if csvWriter == nil {
-				csvWriter = csv.NewWriter(writer, record.Schema(),
-					csv.WithComma(delimiter),
-					csv.WithHeader(includeHeader),
-					csv.WithNullWriter(nullValue),
-					csv.WithStringsReplacer(stringsReplacer),
-					csv.WithBoolWriter(boolFormatter),
-				)
-				defer csvWriter.Flush()
-			}
+		if csvWriter == nil {
+			csvWriter = csv.NewWriter(writer, record.Schema(),
+				csv.WithComma(delimiter),
+				csv.WithHeader(includeHeader),
+				csv.WithNullWriter(nullValue),
+				csv.WithStringsReplacer(stringsReplacer),
+				csv.WithBoolWriter(boolFormatter),
+			)
+			defer csvWriter.Flush()
+		}
 
-			if err := csvWriter.Write(record); err != nil {
-				return fmt.Errorf("failed to write record to CSV: %w", err)
-			}
+		if err := csvWriter.Write(record); err != nil {
+			return fmt.Errorf("failed to write record to CSV: %w", err)
+		}
 
-			if err := csvWriter.Error(); err != nil {
-				return fmt.Errorf("CSV writer encountered an error: %w", err)
-			}
+		if err := csvWriter.Error(); err != nil {
+			return fmt.Errorf("CSV writer encountered an error: %w", err)
 		}
 	}
 }

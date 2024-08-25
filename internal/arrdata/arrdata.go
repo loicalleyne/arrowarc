@@ -1,20 +1,3 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Package arrdata exports arrays and records data ready to be used for tests.
 package arrdata
 
 import (
@@ -40,7 +23,7 @@ func init() {
 	Records["nulls"] = makeNullRecords()
 	Records["primitives"] = makePrimitiveRecords()
 	Records["structs"] = makeStructsRecords()
-	Records["lists"] = makeListsRecords()
+	Records["lists"] = MakeListsRecords()
 	Records["list_views"] = makeListViewsRecords()
 	Records["strings"] = makeStringsRecords()
 	Records["fixed_size_lists"] = makeFixedSizeListsRecords()
@@ -266,7 +249,7 @@ func makeStructsRecords() []arrow.Record {
 	return recs
 }
 
-func makeListsRecords() []arrow.Record {
+func MakeListsRecords() []arrow.Record {
 	mem := memory.NewGoAllocator()
 	dtype := arrow.ListOf(arrow.PrimitiveTypes.Int32)
 	schema := arrow.NewSchema([]arrow.Field{
@@ -1832,4 +1815,46 @@ func buildArray(bldr array.Builder, data arrow.Array) {
 			}
 		}
 	}
+}
+
+func MakeRegionRecords() []arrow.Record {
+	pool := memory.NewGoAllocator()
+
+	// Define the schema
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "regionkey", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "name", Type: arrow.BinaryTypes.String},
+	}, nil)
+
+	// Create regionkey array
+	regionkeyBldr := array.NewInt64Builder(pool)
+	defer regionkeyBldr.Release()
+	regionkeyBldr.AppendValues([]int64{1, 2, 3}, nil)
+
+	// Create name array
+	nameBldr := array.NewStringBuilder(pool)
+	defer nameBldr.Release()
+	nameBldr.AppendValues([]string{"Region1", "Region2", "Region3"}, nil)
+
+	// Create the arrays
+	regionkeyArray := regionkeyBldr.NewArray()
+	nameArray := nameBldr.NewArray()
+
+	defer regionkeyArray.Release()
+	defer nameArray.Release()
+
+	// Ensure the arrays have the correct length
+	if regionkeyArray.Len() != nameArray.Len() {
+		panic("Array lengths do not match")
+	}
+
+	// Create record batch
+	cols := []arrow.Array{
+		regionkeyArray,
+		nameArray,
+	}
+
+	record := array.NewRecord(schema, cols, int64(regionkeyArray.Len()))
+
+	return []arrow.Record{record}
 }
