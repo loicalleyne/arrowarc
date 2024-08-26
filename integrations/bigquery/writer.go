@@ -39,9 +39,9 @@ import (
 	storage "cloud.google.com/go/bigquery/storage/apiv1"
 	storagepb "cloud.google.com/go/bigquery/storage/apiv1/storagepb"
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"google.golang.org/api/option"
 )

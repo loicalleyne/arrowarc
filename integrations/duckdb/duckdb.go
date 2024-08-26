@@ -39,15 +39,17 @@ import (
 	"github.com/apache/arrow-adbc/go/adbc/drivermgr"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
+// DuckDBExtension represents a DuckDB extension with its name and load preference.
 type DuckDBExtension struct {
 	Name          string
 	LoadByDefault bool
 }
 
+// DefaultExtensions returns the default extensions to be loaded in DuckDB.
 func DefaultExtensions() []DuckDBExtension {
 	return []DuckDBExtension{
 		{Name: "arrow", LoadByDefault: true},
@@ -55,6 +57,7 @@ func DefaultExtensions() []DuckDBExtension {
 	}
 }
 
+// OpenDuckDBConnection opens a connection to a DuckDB database with the specified extensions.
 func OpenDuckDBConnection(ctx context.Context, dbURL string, additionalExtensions []DuckDBExtension) (adbc.Connection, error) {
 	drv := drivermgr.Driver{}
 	dbConfig := map[string]string{
@@ -85,6 +88,7 @@ func OpenDuckDBConnection(ctx context.Context, dbURL string, additionalExtension
 	return conn, nil
 }
 
+// DuckDBRecordReader implements arrio.Reader for reading records from DuckDB.
 type DuckDBRecordReader struct {
 	ctx    context.Context
 	conn   adbc.Connection
@@ -118,6 +122,12 @@ func NewDuckDBRecordReader(ctx context.Context, conn adbc.Connection, query stri
 	}, nil
 }
 
+// Schema returns the schema of the records being read from DuckDB.
+func (r *DuckDBRecordReader) Schema() *arrow.Schema {
+	return r.reader.Schema()
+}
+
+// Read reads the next record from DuckDB.
 func (r *DuckDBRecordReader) Read() (arrow.Record, error) {
 	if !r.reader.Next() {
 		if err := r.reader.Err(); err != nil && err != io.EOF {
@@ -131,6 +141,7 @@ func (r *DuckDBRecordReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
+// Close releases resources associated with the DuckDB reader.
 func (r *DuckDBRecordReader) Close() error {
 	if r.reader != nil {
 		r.reader.Release()
@@ -171,6 +182,7 @@ func NewDuckDBRecordWriter(ctx context.Context, conn adbc.Connection, tableName 
 	}, nil
 }
 
+// Write writes a record to DuckDB.
 func (w *DuckDBRecordWriter) Write(record arrow.Record) error {
 	if record.NumRows() == 0 {
 		return fmt.Errorf("received record with no rows")
@@ -208,14 +220,23 @@ func (w *DuckDBRecordWriter) Write(record arrow.Record) error {
 	return nil
 }
 
+// Close closes the DuckDB writer.
 func (w *DuckDBRecordWriter) Close() error {
 	return w.stmt.Close()
 }
 
+// Schema returns the schema of the records being written to DuckDB.
+func (w *DuckDBRecordWriter) Schema() *arrow.Schema {
+	schema, _ := w.stmt.GetParameterSchema()
+	return schema
+}
+
+// CloseDuckDBConnection closes the DuckDB connection.
 func CloseDuckDBConnection(conn adbc.Connection) error {
 	return conn.Close()
 }
 
+// installAndLoadExtension installs and loads the specified DuckDB extension.
 func installAndLoadExtension(conn adbc.Connection, extensionName string) error {
 	if err := executeQuery(conn, fmt.Sprintf("INSTALL %s;", extensionName)); err != nil {
 		return fmt.Errorf("failed to install extension '%s': %w", extensionName, err)
@@ -226,6 +247,7 @@ func installAndLoadExtension(conn adbc.Connection, extensionName string) error {
 	return nil
 }
 
+// executeQuery executes a SQL query on the DuckDB connection.
 func executeQuery(conn adbc.Connection, sql string) error {
 	stmt, err := conn.NewStatement()
 	if err != nil {

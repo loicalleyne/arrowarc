@@ -40,9 +40,9 @@ import (
 	bqStorage "cloud.google.com/go/bigquery/storage/apiv1"
 	storagepb "cloud.google.com/go/bigquery/storage/apiv1/storagepb"
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -159,7 +159,7 @@ func (r *bigQueryArrowReader) Read() (arrow.Record, error) {
 		}
 
 		if err := r.r.Err(); err != nil {
-			if status.Code(err) == codes.Canceled || err == io.EOF {
+			if status.Code(err) == codes.Canceled || err == io.EOF || r.ctx.Err() != nil {
 				return nil, io.EOF
 			}
 			return nil, fmt.Errorf("error reading records: %w", err)
@@ -175,7 +175,7 @@ func (r *bigQueryArrowReader) Read() (arrow.Record, error) {
 
 		response, err := stream.Recv()
 		if err != nil {
-			if status.Code(err) == codes.Canceled || err == io.EOF {
+			if status.Code(err) == codes.Canceled || err == io.EOF || r.ctx.Err() != nil {
 				continue // Move to the next stream
 			}
 			return nil, fmt.Errorf("error receiving stream response: %w", err)
@@ -201,4 +201,8 @@ func (r *bigQueryArrowReader) Close() error {
 		r.r.Release()
 	}
 	return nil
+}
+
+func (r *bigQueryArrowReader) Schema() *arrow.Schema {
+	return r.r.Schema()
 }

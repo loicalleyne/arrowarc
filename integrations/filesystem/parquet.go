@@ -36,14 +36,15 @@ import (
 	"os"
 
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/parquet"
 	"github.com/apache/arrow/go/v17/parquet/compress"
 	"github.com/apache/arrow/go/v17/parquet/file"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
+// ParquetWriteOptions provides options for writing Parquet files.
 type ParquetWriteOptions struct {
 	Compression        compress.Compression
 	MaxRowGroupLength  int64
@@ -54,6 +55,7 @@ type ParquetWriteOptions struct {
 	ParquetWriterProps *parquet.WriterProperties
 }
 
+// NewDefaultParquetWriteOptions returns default write options for Parquet files.
 func NewDefaultParquetWriteOptions() *ParquetWriteOptions {
 	mem := memory.NewGoAllocator()
 	return &ParquetWriteOptions{
@@ -71,12 +73,14 @@ func NewDefaultParquetWriteOptions() *ParquetWriteOptions {
 	}
 }
 
-// The struct that implements the arrio.Reader interface for Parquet files
+// parquetRecordReader implements arrio.Reader for reading records from Parquet files.
 type parquetRecordReader struct {
-	recordReader pqarrow.RecordReader // Direct interface, no pointer
+	recordReader pqarrow.RecordReader
 	parquetRdr   *file.Reader
+	schema       *arrow.Schema
 }
 
+// Read reads the next record from the Parquet file.
 func (r *parquetRecordReader) Read() (arrow.Record, error) {
 	if !r.recordReader.Next() {
 		if err := r.recordReader.Err(); err != nil && err != io.EOF {
@@ -87,20 +91,22 @@ func (r *parquetRecordReader) Read() (arrow.Record, error) {
 	return r.recordReader.Record(), nil
 }
 
+// Schema returns the schema of the records being read from the Parquet file.
+func (r *parquetRecordReader) Schema() *arrow.Schema {
+	return r.schema
+}
+
+// Close closes the Parquet reader.
 func (r *parquetRecordReader) Close() error {
 	return r.parquetRdr.Close()
 }
 
+// ReadParquetFileStream reads records from a Parquet file and returns a reader that implements arrio.Reader.
 func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool) (arrio.Reader, error) {
 	if chunkSize == 0 {
 		chunkSize = 1024 // Default to 1KB
 	}
 
-	if !parallel {
-		parallel = true
-	}
-
-	// Open the Parquet file with or without memory mapping based on the flag
 	parquetRdr, err := file.OpenParquetFile(filePath, memoryMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open Parquet file: %w", err)
@@ -123,7 +129,6 @@ func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool,
 		return nil, fmt.Errorf("failed to get schema: %w", err)
 	}
 
-	// If no specific columns are requested, include all columns
 	var colIndices []int
 	if len(columns) == 0 {
 		colIndices = nil
@@ -137,7 +142,6 @@ func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool,
 		}
 	}
 
-	// If no specific row groups are requested, set to nil to read all row groups
 	if len(rowGroups) == 0 {
 		rowGroups = nil
 	}
@@ -151,9 +155,39 @@ func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool,
 	return &parquetRecordReader{
 		recordReader: recordReader,
 		parquetRdr:   parquetRdr,
+		schema:       schema,
 	}, nil
 }
 
+// parquetRecordWriter implements arrio.Writer for writing records to Parquet files.
+type parquetRecordWriter struct {
+	writer *pqarrow.FileWriter
+	file   *os.File
+	schema *arrow.Schema
+}
+
+// Write writes a record to the Parquet file.
+func (w *parquetRecordWriter) Write(record arrow.Record) error {
+	if err := w.writer.Write(record); err != nil {
+		return fmt.Errorf("failed to write record to Parquet: %w", err)
+	}
+	return nil
+}
+
+// Close closes the Parquet writer.
+func (w *parquetRecordWriter) Close() error {
+	if err := w.writer.Close(); err != nil {
+		return fmt.Errorf("failed to close Parquet writer: %w", err)
+	}
+	return w.file.Close()
+}
+
+// Schema returns the schema of the records being written to the Parquet file.
+func (w *parquetRecordWriter) Schema() *arrow.Schema {
+	return w.schema
+}
+
+// WriteParquetFileStream writes records from a reader to a Parquet file.
 func WriteParquetFileStream(ctx context.Context, filePath string, reader arrio.Reader, opts *ParquetWriteOptions) error {
 	if opts == nil {
 		opts = NewDefaultParquetWriteOptions()
@@ -188,8 +222,7 @@ func WriteParquetFileStream(ctx context.Context, filePath string, reader arrio.R
 		}
 
 		if parquetWriter == nil {
-			schema := record.Schema()
-			parquetWriter, err = pqarrow.NewFileWriter(schema, file, opts.ParquetWriterProps, opts.ArrowWriterProps)
+			parquetWriter, err = pqarrow.NewFileWriter(record.Schema(), file, opts.ParquetWriterProps, opts.ArrowWriterProps)
 			if err != nil {
 				return fmt.Errorf("failed to create Parquet writer: %w", err)
 			}

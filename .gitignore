@@ -37,3 +37,4 @@ pkg/common/config/secrets.go
 .env
 assets/keys/
 build.sh
+cdata/

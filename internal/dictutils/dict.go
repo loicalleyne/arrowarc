@@ -168,7 +168,7 @@ type dictCollector struct {
 	mapper       *Mapper
 }
 
-func (d *dictCollector) visitChildren(pos FieldPos, typ arrow.DataType, arr arrow.Array) error {
+func (d *dictCollector) visitChildren(pos FieldPos, _ arrow.DataType, arr arrow.Array) error {
 	for i, c := range arr.Data().Children() {
 		child := array.MakeFromData(c)
 		defer child.Release()

@@ -30,6 +30,7 @@
 package integrations
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -38,10 +39,19 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/arrowarc/arrowarc/internal/arrio"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 )
 
-func ReadJSONFileStream(ctx context.Context, filePath string, schema *arrow.Schema, chunkSize int) (arrio.Reader, error) {
+// JSONRecordReader implements arrio.Reader for reading records from JSON files.
+type JSONRecordReader struct {
+	ctx        context.Context
+	file       *os.File
+	jsonReader *array.JSONReader
+	schema     *arrow.Schema
+}
+
+// NewJSONRecordReader creates a new reader for reading records from a JSON file.
+func NewJSONRecordReader(ctx context.Context, filePath string, schema *arrow.Schema, chunkSize int) (arrio.Reader, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open JSON file: %w", err)
@@ -53,15 +63,11 @@ func ReadJSONFileStream(ctx context.Context, filePath string, schema *arrow.Sche
 		ctx:        ctx,
 		file:       file,
 		jsonReader: jsonReader,
+		schema:     schema,
 	}, nil
 }
 
-type JSONRecordReader struct {
-	ctx        context.Context
-	file       *os.File
-	jsonReader *array.JSONReader
-}
-
+// Read reads the next record from the JSON file.
 func (r *JSONRecordReader) Read() (arrow.Record, error) {
 	select {
 	case <-r.ctx.Done():
@@ -83,23 +89,58 @@ func (r *JSONRecordReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
+// Schema returns the schema of the records being read from the JSON file.
+func (r *JSONRecordReader) Schema() *arrow.Schema {
+	return r.schema
+}
+
+// Close releases resources associated with the JSON reader.
 func (r *JSONRecordReader) Close() error {
 	r.jsonReader.Release()
 	return r.file.Close()
 }
 
-func WriteJSONFileStream(ctx context.Context, filePath string, reader arrio.Reader) error {
+// JSONRecordWriter implements arrio.Writer for writing records to JSON files.
+type JSONRecordWriter struct {
+	file    *os.File
+	encoder *json.Encoder
+}
+
+// NewJSONRecordWriter creates a new writer for writing records to a JSON file.
+func NewJSONRecordWriter(ctx context.Context, filePath string) (arrio.Writer, error) {
 	file, err := os.Create(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		return nil, fmt.Errorf("failed to create JSON file: %w", err)
 	}
-	defer func() {
-		if cerr := file.Close(); cerr != nil && err == nil {
-			err = fmt.Errorf("failed to close file: %w", cerr)
-		}
-	}()
 
 	encoder := json.NewEncoder(file)
+
+	return &JSONRecordWriter{
+		file:    file,
+		encoder: encoder,
+	}, nil
+}
+
+// Write writes a record to the JSON file.
+func (w *JSONRecordWriter) Write(record arrow.Record) error {
+	structArray := array.RecordToStructArray(record)
+	if err := w.encoder.Encode(structArray); err != nil {
+		return fmt.Errorf("error writing JSON record: %w", err)
+	}
+	return nil
+}
+
+// Close closes the JSON writer.
+func (w *JSONRecordWriter) Close() error {
+	return w.file.Close()
+}
+
+// WriteJSONFileStream writes records from a reader to a JSON file.
+func WriteJSONFileStream(ctx context.Context, filePath string, reader arrio.Reader) error {
+	writer, err := NewJSONRecordWriter(ctx, filePath)
+	if err != nil {
+		return fmt.Errorf("failed to create JSON writer: %w", err)
+	}
 
 	for {
 		select {
@@ -116,10 +157,81 @@ func WriteJSONFileStream(ctx context.Context, filePath string, reader arrio.Read
 			return fmt.Errorf("failed to read record: %w", err)
 		}
 
-		structArray := array.RecordToStructArray(record)
-		if err := encoder.Encode(structArray); err != nil {
-			return fmt.Errorf("error writing JSON record: %w", err)
+		if err := writer.Write(record); err != nil {
+			return fmt.Errorf("failed to write record to JSON: %w", err)
 		}
 		record.Release()
 	}
+}
+
+// Marshal safely marshals the provided value to JSON.
+func Marshal(v interface{}) ([]byte, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("json: failed to marshal: %w", err)
+	}
+	return data, nil
+}
+
+// Unmarshal safely unmarshals the provided JSON data into the provided value.
+func Unmarshal(data []byte, v interface{}) error {
+	if len(data) == 0 {
+		return fmt.Errorf("json: cannot unmarshal empty data")
+	}
+	if err := json.Unmarshal(data, v); err != nil {
+		return fmt.Errorf("json: failed to unmarshal: %w", err)
+	}
+	return nil
+}
+
+// NewDecoder initializes and returns a new JSON Decoder.
+func NewDecoder(r io.Reader) *json.Decoder {
+	return json.NewDecoder(r)
+}
+
+// NewEncoder initializes and returns a new JSON Encoder.
+func NewEncoder(w io.Writer) *json.Encoder {
+	return json.NewEncoder(w)
+}
+
+// EncodeToString marshals and encodes the provided value directly into a string.
+func EncodeToString(v interface{}) (string, error) {
+	data, err := Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// DecodeFromString decodes JSON data from a string into the provided value.
+func DecodeFromString(s string, v interface{}) error {
+	if s == "" {
+		return fmt.Errorf("json: cannot decode from empty string")
+	}
+	return Unmarshal([]byte(s), v)
+}
+
+// PrettyPrint marshals the provided value into a pretty-printed JSON string.
+func PrettyPrint(v interface{}) (string, error) {
+	var buf bytes.Buffer
+	enc := NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return "", fmt.Errorf("json: failed to pretty print: %w", err)
+	}
+	return buf.String(), nil
+}
+
+// ValidateJSON checks if the provided byte slice is valid JSON.
+func ValidateJSON(data []byte) error {
+	var js json.RawMessage
+	if err := Unmarshal(data, &js); err != nil {
+		return fmt.Errorf("json: invalid JSON: %w", err)
+	}
+	return nil
+}
+
+// ValidateJSONString checks if the provided string is valid JSON.
+func ValidateJSONString(s string) error {
+	return ValidateJSON([]byte(s))
 }

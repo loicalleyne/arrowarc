@@ -37,11 +37,11 @@ import (
 	"strings"
 
 	"cloud.google.com/go/storage"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/csv"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/parquet"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 	"google.golang.org/api/option"
 )
 

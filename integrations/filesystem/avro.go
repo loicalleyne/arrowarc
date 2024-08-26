@@ -36,15 +36,19 @@ import (
 	"os"
 
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/avro"
 	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
+// AvroRecordReader implements arrio.Reader for reading records from Avro files.
 type AvroRecordReader struct {
 	reader *avro.OCFReader
+	file   *os.File
+	schema *arrow.Schema
 }
 
+// NewAvroRecordReader creates a new reader for reading records from an Avro file.
 func NewAvroRecordReader(ctx context.Context, filePath string, chunkSize int64) (arrio.Reader, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -59,9 +63,12 @@ func NewAvroRecordReader(ctx context.Context, filePath string, chunkSize int64) 
 
 	return &AvroRecordReader{
 		reader: avroReader,
+		file:   file,
+		schema: avroReader.Schema(), // Retrieve and store the schema
 	}, nil
 }
 
+// Read reads the next record from the Avro file.
 func (r *AvroRecordReader) Read() (arrow.Record, error) {
 	if !r.reader.Next() {
 		if err := r.reader.Err(); err != nil && err != io.EOF {
@@ -79,9 +86,15 @@ func (r *AvroRecordReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
+// Schema returns the schema of the records being read from the Avro file.
+func (r *AvroRecordReader) Schema() *arrow.Schema {
+	return r.schema
+}
+
+// Close releases resources associated with the Avro reader.
 func (r *AvroRecordReader) Close() error {
 	if r.reader != nil {
 		r.reader.Release()
 	}
-	return nil
+	return r.file.Close()
 }
