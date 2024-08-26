@@ -9,7 +9,7 @@ require (
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/fergusstrange/embedded-postgres v1.28.0
-	github.com/go-faker/faker/v4 v4.4.2
+	github.com/go-faker/faker/v4 v4.5.0
 	github.com/goccy/go-json v0.10.3
 	github.com/golang/protobuf v1.5.4
 	github.com/google/flatbuffers v24.3.25+incompatible
