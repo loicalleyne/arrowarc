@@ -33,12 +33,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/apache/arrow-adbc/go/adbc"
 	"github.com/apache/arrow-adbc/go/adbc/drivermgr"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/arrowarc/arrowarc/internal/arrio"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 )
 
 type PostgresSource struct {
@@ -113,5 +114,89 @@ func (r *PostgresRecordReader) Close() error {
 }
 
 func (p *PostgresSource) Close() error {
+	return p.conn.Close()
+}
+
+func (r *PostgresRecordReader) Schema() *arrow.Schema {
+	return r.recordSet.Schema()
+}
+
+type PostgresSink struct {
+	conn adbc.Connection
+}
+
+// NewPostgresSink creates a new PostgresSink with an open ADBC connection.
+func NewPostgresSink(ctx context.Context, dbURL string) (*PostgresSink, error) {
+	var drv drivermgr.Driver
+	db, err := drv.NewDatabase(map[string]string{
+		"driver":          "/usr/local/lib/libadbc_driver_postgresql.dylib",
+		adbc.OptionKeyURI: dbURL,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ADBC database: %w", err)
+	}
+
+	conn, err := db.Open(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open connection: %w", err)
+	}
+
+	return &PostgresSink{conn: conn}, nil
+}
+
+// IngestToPostgres ingests records from arrio.Reader into the specified PostgreSQL table.
+func (p *PostgresSink) IngestToPostgres(ctx context.Context, tableName string, schema *arrow.Schema, reader arrio.Reader) error {
+	// Construct the SQL query based on the schema
+	columns := make([]string, len(schema.Fields()))
+	values := make([]string, len(schema.Fields()))
+	for i, field := range schema.Fields() {
+		columns[i] = field.Name
+		values[i] = fmt.Sprintf("$%d", i+1)
+	}
+	query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, strings.Join(columns, ", "), strings.Join(values, ", "))
+
+	// Prepare the statement
+	stmt, err := p.conn.NewStatement()
+	if err != nil {
+		return fmt.Errorf("failed to create statement: %w", err)
+	}
+	defer stmt.Close()
+
+	if err := stmt.SetSqlQuery(query); err != nil {
+		return fmt.Errorf("failed to set SQL query: %w", err)
+	}
+
+	// Read records from the arrio.Reader and bind them to the statement
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break // End of stream
+			}
+			return fmt.Errorf("failed to read record: %w", err)
+		}
+		/*
+			r := array.RecordToStructArray(record)
+
+			// Bind the record set as a stream
+			if err := stmt.BindStream(ctx, arrio.NewRecordReader(r)); err != nil {
+				record.Release()
+				return fmt.Errorf("failed to bind stream: %w", err)
+			}
+		*/
+		// Execute the insert statement
+		if _, err := stmt.ExecuteUpdate(ctx); err != nil {
+			record.Release()
+			return fmt.Errorf("failed to execute update: %w", err)
+		}
+
+		record.Release()
+	}
+
+	return nil
+}
+
+// Close closes the ADBC connection.
+func (p *PostgresSink) Close() error {
 	return p.conn.Close()
 }

@@ -37,12 +37,13 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 	"github.com/google/go-github/v64/github"
 	"golang.org/x/oauth2"
 )
 
+// GitHubAPIReader implements arrio.Reader for reading GitHub repository data.
 type GitHubAPIReader struct {
 	repos        []string
 	client       *github.Client
@@ -51,6 +52,7 @@ type GitHubAPIReader struct {
 	currentIndex int
 }
 
+// NewGitHubAPIReader creates a new reader for reading GitHub repository data.
 func NewGitHubAPIReader(repos []string, client *github.Client) arrio.Reader {
 	allocator := memory.NewGoAllocator()
 	schema := arrow.NewSchema([]arrow.Field{
@@ -71,6 +73,12 @@ func NewGitHubAPIReader(repos []string, client *github.Client) arrio.Reader {
 	}
 }
 
+// Schema returns the schema of the records being read from GitHub API.
+func (r *GitHubAPIReader) Schema() *arrow.Schema {
+	return r.schema
+}
+
+// Read reads the next record of GitHub repository data.
 func (r *GitHubAPIReader) Read() (arrow.Record, error) {
 	if r.currentIndex >= len(r.repos) {
 		return nil, io.EOF
@@ -98,6 +106,13 @@ func (r *GitHubAPIReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
+// Close releases any resources associated with the GitHubAPIReader.
+func (r *GitHubAPIReader) Close() error {
+	// No resources to release in this implementation
+	return nil
+}
+
+// fetchGitHubRepoData retrieves data for a GitHub repository.
 func fetchGitHubRepoData(ctx context.Context, repo string, client *github.Client) (*github.Repository, error) {
 	ownerRepo := parseRepo(repo)
 	if len(ownerRepo) != 2 {
@@ -112,19 +127,16 @@ func fetchGitHubRepoData(ctx context.Context, repo string, client *github.Client
 	return repoInfo, nil
 }
 
+// parseRepo parses a repository string in the format "owner/repo" into its components.
 func parseRepo(repo string) []string {
 	return strings.Split(repo, "/")
 }
 
+// NewGitHubClient creates a new GitHub client using the provided OAuth token.
 func NewGitHubClient(ctx context.Context, token string) *github.Client {
 	ts := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: token},
 	)
 	tc := oauth2.NewClient(ctx, ts)
 	return github.NewClient(tc)
-}
-
-func (r *GitHubAPIReader) Close() error {
-	// No resources to release in this implementation
-	return nil
 }

@@ -39,10 +39,11 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/arrowarc/arrowarc/internal/arrio"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	config "github.com/arrowarc/arrowarc/pkg/common/config"
 )
 
+// WeatherAPIReader implements arrio.Reader for reading weather data from an API.
 type WeatherAPIReader struct {
 	ctx      context.Context
 	cities   []config.City
@@ -51,6 +52,7 @@ type WeatherAPIReader struct {
 	currCity int
 }
 
+// NewWeatherAPIReader creates a new reader for reading weather data from a list of cities.
 func NewWeatherAPIReader(ctx context.Context, cities []config.City, client *http.Client) (arrio.Reader, error) {
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "city", Type: arrow.BinaryTypes.String},
@@ -72,6 +74,12 @@ func NewWeatherAPIReader(ctx context.Context, cities []config.City, client *http
 	}, nil
 }
 
+// Schema returns the schema of the records being read from the Weather API.
+func (r *WeatherAPIReader) Schema() *arrow.Schema {
+	return r.schema
+}
+
+// Read reads the next record of weather data from the API.
 func (r *WeatherAPIReader) Read() (arrow.Record, error) {
 	if r.currCity >= len(r.cities) {
 		return nil, io.EOF
@@ -109,11 +117,13 @@ func (r *WeatherAPIReader) Read() (arrow.Record, error) {
 	return nil, io.EOF
 }
 
+// Close releases any resources associated with the WeatherAPIReader.
 func (r *WeatherAPIReader) Close() error {
-	// Release any resources if necessary
+	// Add any cleanup logic if needed
 	return nil
 }
 
+// fetchWeatherData calls the Open-Meteo API to retrieve weather data for a specific location.
 func fetchWeatherData(ctx context.Context, latitude, longitude float64, client *http.Client) (map[string]interface{}, error) {
 	url := fmt.Sprintf("%s?latitude=%.4f&longitude=%.4f&hourly=temperature_2m&current_weather=true", config.OpenMeteoAPIURL, latitude, longitude)
 

@@ -37,13 +37,15 @@ import (
 	"strings"
 
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/csv"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
 // CSVRecordReader implements arrio.Reader for reading records from CSV files.
 type CSVRecordReader struct {
 	reader *csv.Reader
+	file   *os.File
+	schema *arrow.Schema
 }
 
 // NewCSVRecordReader creates a new reader for reading records from a CSV file.
@@ -62,7 +64,11 @@ func NewCSVRecordReader(ctx context.Context, filePath string, schema *arrow.Sche
 
 	reader := csv.NewReader(file, schema, options...)
 
-	return &CSVRecordReader{reader: reader}, nil
+	return &CSVRecordReader{
+		reader: reader,
+		file:   file,
+		schema: schema,
+	}, nil
 }
 
 // Read reads the next record from the CSV file.
@@ -83,17 +89,23 @@ func (r *CSVRecordReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
+// Schema returns the schema of the records being read from the CSV file.
+func (r *CSVRecordReader) Schema() *arrow.Schema {
+	return r.schema
+}
+
 // Close releases resources associated with the CSV reader.
 func (r *CSVRecordReader) Close() error {
 	if r.reader != nil {
 		r.reader.Release()
 	}
-	return nil
+	return r.file.Close()
 }
 
 // CSVRecordWriter implements arrio.Writer for writing records to CSV files.
 type CSVRecordWriter struct {
 	writer *csv.Writer
+	file   *os.File
 }
 
 // NewCSVRecordWriter creates a new writer for writing records to a CSV file.
@@ -116,7 +128,10 @@ func NewCSVRecordWriter(ctx context.Context, filePath string, schema *arrow.Sche
 		csv.WithBoolWriter(boolFormatter),
 	)
 
-	return &CSVRecordWriter{writer: writer}, nil
+	return &CSVRecordWriter{
+		writer: writer,
+		file:   file,
+	}, nil
 }
 
 // Write writes a record to the CSV file.
@@ -137,5 +152,5 @@ func (w *CSVRecordWriter) Close() error {
 	if w.writer != nil {
 		w.writer.Flush()
 	}
-	return nil
+	return w.file.Close()
 }

@@ -36,17 +36,30 @@ import (
 	"os"
 
 	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/arrowarc/arrowarc/internal/arrio"
-	flatbuf "github.com/arrowarc/arrowarc/internal/flatbuf"
 )
 
+// SchemaReader is an interface that extends arrio.Reader to include a Schema method.
+type SchemaReader interface {
+	arrio.Reader
+	Schema() *arrow.Schema
+}
+
+// SchemaWriter is an interface that extends arrio.Writer to include a Schema method.
+type SchemaWriter interface {
+	arrio.Writer
+	Schema() *arrow.Schema
+}
+
+// IPCRecordReader implements SchemaReader for reading records from IPC files.
 type IPCRecordReader struct {
 	reader *ipc.Reader
 }
 
-func NewIPCRecordReader(ctx context.Context, filePath string) (arrio.Reader, error) {
+// NewIPCRecordReader creates a new reader for reading records from an IPC file.
+func NewIPCRecordReader(ctx context.Context, filePath string) (SchemaReader, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open IPC file: %w", err)
@@ -61,6 +74,7 @@ func NewIPCRecordReader(ctx context.Context, filePath string) (arrio.Reader, err
 	return &IPCRecordReader{reader: reader}, nil
 }
 
+// Read reads the next record from the IPC file.
 func (r *IPCRecordReader) Read() (arrow.Record, error) {
 	if !r.reader.Next() {
 		if err := r.reader.Err(); err != nil && err != io.EOF {
@@ -74,18 +88,27 @@ func (r *IPCRecordReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
+// Schema returns the schema of the records being read from the IPC file.
+func (r *IPCRecordReader) Schema() *arrow.Schema {
+	return r.reader.Schema()
+}
+
+// Close releases resources associated with the IPC reader.
 func (r *IPCRecordReader) Close() error {
 	if r.reader != nil {
-		defer r.reader.Release()
+		r.reader.Release()
 	}
 	return nil
 }
 
+// IPCRecordWriter implements SchemaWriter for writing records to IPC files.
 type IPCRecordWriter struct {
 	writer *ipc.Writer
+	schema *arrow.Schema
 }
 
-func NewIPCRecordWriter(ctx context.Context, filePath string, schema *arrow.Schema) (arrio.Writer, error) {
+// NewIPCRecordWriter creates a new writer for writing records to an IPC file.
+func NewIPCRecordWriter(ctx context.Context, filePath string, schema *arrow.Schema) (SchemaWriter, error) {
 	f, err := os.Create(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("could not create IPC file: %w", err)
@@ -94,9 +117,10 @@ func NewIPCRecordWriter(ctx context.Context, filePath string, schema *arrow.Sche
 	mem := memory.NewGoAllocator()
 	writer := ipc.NewWriter(f, ipc.WithAllocator(mem), ipc.WithSchema(schema))
 
-	return &IPCRecordWriter{writer: writer}, nil
+	return &IPCRecordWriter{writer: writer, schema: schema}, nil
 }
 
+// Write writes a record to the IPC file.
 func (w *IPCRecordWriter) Write(record arrow.Record) error {
 	if err := w.writer.Write(record); err != nil {
 		return fmt.Errorf("could not write record: %w", err)
@@ -104,6 +128,7 @@ func (w *IPCRecordWriter) Write(record arrow.Record) error {
 	return nil
 }
 
+// Close closes the IPC writer.
 func (w *IPCRecordWriter) Close() error {
 	if w.writer != nil {
 		return w.writer.Close()
@@ -111,44 +136,7 @@ func (w *IPCRecordWriter) Close() error {
 	return nil
 }
 
-func WriteStreamCompressed(f *os.File, mem memory.Allocator, schema *arrow.Schema, recs []arrow.Record, codec flatbuf.CompressionType, np int) error {
-	// Set up IPC writer options with schema, allocator, and compression concurrency
-	opts := []ipc.Option{
-		ipc.WithSchema(schema),
-		ipc.WithAllocator(mem),
-		ipc.WithCompressConcurrency(np),
-	}
-
-	// Determine the compression codec to use
-	switch codec {
-	case flatbuf.CompressionTypeLZ4_FRAME:
-		opts = append(opts, ipc.WithLZ4())
-	case flatbuf.CompressionTypeZSTD:
-		opts = append(opts, ipc.WithZstd())
-	default:
-		// Default to LZ4 compression if codec is not recognized
-		opts = append(opts, ipc.WithLZ4())
-	}
-
-	// Create the IPC writer
-	w := ipc.NewWriter(f, opts...)
-	defer func() {
-		if err := w.Close(); err != nil {
-			fmt.Fprintf(os.Stderr, "error closing IPC writer: %v\n", err)
-		}
-	}()
-
-	// Write each record to the IPC stream
-	for _, rec := range recs {
-		if err := w.Write(rec); err != nil {
-			return fmt.Errorf("failed to write record: %w", err)
-		}
-	}
-
-	// Explicitly close the writer and handle any errors
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("failed to close IPC writer: %w", err)
-	}
-
-	return nil
+// Schema returns the schema of the records being written to the IPC file.
+func (w *IPCRecordWriter) Schema() *arrow.Schema {
+	return w.schema
 }

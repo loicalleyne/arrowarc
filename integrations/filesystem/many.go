@@ -33,8 +33,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 	duckdb "github.com/arrowarc/arrowarc/integrations/duckdb"
-	"github.com/arrowarc/arrowarc/internal/arrio"
 )
 
 // ReadIcebergFileStream reads data from an Iceberg file using DuckDB and returns an arrio.Reader.
