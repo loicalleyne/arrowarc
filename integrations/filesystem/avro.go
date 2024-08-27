@@ -36,40 +36,51 @@ import (
 	"os"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/avro"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	pool "github.com/arrowarc/arrowarc/internal/memory"
 )
 
-// AvroRecordReader implements arrio.Reader for reading records from Avro files.
-type AvroRecordReader struct {
+// AvroReader reads records from Avro files and implements the Reader interface.
+type AvroReader struct {
 	reader *avro.OCFReader
 	file   *os.File
 	schema *arrow.Schema
+	alloc  memory.Allocator
 }
 
-// NewAvroRecordReader creates a new reader for reading records from an Avro file.
-func NewAvroRecordReader(ctx context.Context, filePath string, chunkSize int64) (arrio.Reader, error) {
+// AvroReadOptions defines options for reading Avro files.
+type AvroReadOptions struct {
+	ChunkSize int64
+}
+
+// NewAvroReader creates a new reader for reading records from an Avro file.
+func NewAvroReader(ctx context.Context, filePath string, opts *AvroReadOptions) (*AvroReader, error) {
+	alloc := pool.GetAllocator()
+
 	file, err := os.Open(filePath)
 	if err != nil {
+		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to open Avro file: %w", err)
 	}
 
-	avroReader, err := avro.NewOCFReader(file, avro.WithAllocator(memory.DefaultAllocator), avro.WithChunk(int(chunkSize)))
+	avroReader, err := avro.NewOCFReader(file, avro.WithAllocator(alloc), avro.WithChunk(int(opts.ChunkSize)))
 	if err != nil {
 		file.Close()
+		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to create Avro OCF reader: %w", err)
 	}
 
-	return &AvroRecordReader{
+	return &AvroReader{
 		reader: avroReader,
 		file:   file,
-		schema: avroReader.Schema(), // Retrieve and store the schema
+		schema: avroReader.Schema(),
+		alloc:  alloc,
 	}, nil
 }
 
 // Read reads the next record from the Avro file.
-func (r *AvroRecordReader) Read() (arrow.Record, error) {
+func (r *AvroReader) Read() (arrow.Record, error) {
 	if !r.reader.Next() {
 		if err := r.reader.Err(); err != nil && err != io.EOF {
 			return nil, fmt.Errorf("error reading Avro record: %w", err)
@@ -87,12 +98,13 @@ func (r *AvroRecordReader) Read() (arrow.Record, error) {
 }
 
 // Schema returns the schema of the records being read from the Avro file.
-func (r *AvroRecordReader) Schema() *arrow.Schema {
+func (r *AvroReader) Schema() *arrow.Schema {
 	return r.schema
 }
 
 // Close releases resources associated with the Avro reader.
-func (r *AvroRecordReader) Close() error {
+func (r *AvroReader) Close() error {
+	defer pool.PutAllocator(r.alloc)
 	if r.reader != nil {
 		r.reader.Release()
 	}
