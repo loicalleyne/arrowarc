@@ -31,75 +31,78 @@ package convert
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
 	"strings"
 
-	"github.com/apache/arrow/go/v17/arrow"
 	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
+	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/arrowarc/arrowarc/pkg/pipeline"
 )
 
-func ConvertParquetToCSV(ctx context.Context, parquetFilePath, csvFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) error {
-	reader, err := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
+func ConvertParquetToCSV(
+	ctx context.Context,
+	parquetFilePath, csvFilePath string,
+	memoryMap bool, chunkSize int64,
+	columns []string, rowGroups []int, parallel bool,
+	delimiter rune, includeHeader bool,
+	nullValue string, stringsReplacer *strings.Replacer,
+	boolFormatter func(bool) string,
+) error {
+	// Validate input parameters
+	if parquetFilePath == "" {
+		return errors.New("Parquet file path cannot be empty")
+	}
+	if csvFilePath == "" {
+		return errors.New("CSV file path cannot be empty")
+	}
+	if chunkSize <= 0 {
+		return errors.New("chunk size must be greater than zero")
+	}
+	if ctx == nil {
+		return errors.New("context cannot be nil")
+	}
+
+	// Create Parquet reader
+	reader, err := filesystem.NewParquetReader(ctx, parquetFilePath, &filesystem.ParquetReadOptions{
+		MemoryMap: memoryMap,
+		RowGroups: rowGroups,
+		Parallel:  parallel,
+	})
 	if err != nil {
-		return fmt.Errorf("error while creating Parquet reader: %w", err)
+		return fmt.Errorf("failed to create Parquet reader for file '%s': %w", parquetFilePath, err)
 	}
+	defer func() {
+		if cerr := reader.Close(); cerr != nil {
+			err = fmt.Errorf("failed to close Parquet reader: %w", cerr)
+		}
+	}()
 
-	// Read the first record to extract the schema
-	firstRecord, err := reader.Read()
+	// Create CSV writer
+	writer, err := filesystem.NewCSVWriter(ctx, csvFilePath, reader.Schema(), &integrations.CSVWriteOptions{
+		Delimiter:       delimiter,
+		IncludeHeader:   includeHeader,
+		NullValue:       nullValue,
+		StringsReplacer: stringsReplacer,
+		BoolFormatter:   boolFormatter,
+	})
 	if err != nil {
-		if err == io.EOF {
-			return fmt.Errorf("no records found in the Parquet file")
+		return fmt.Errorf("failed to create CSV writer for file '%s': %w", csvFilePath, err)
+	}
+	defer func() {
+		if cerr := writer.Close(); cerr != nil {
+			err = fmt.Errorf("failed to close CSV writer: %w", cerr)
 		}
-		return fmt.Errorf("error reading the first record from Parquet file: %w", err)
-	}
-	schema := firstRecord.Schema()
+	}()
 
-	// Filter the schema if specific columns are provided
-	if len(columns) > 0 {
-		schema = filterSchema(schema, columns)
-	}
+	// Setup pipeline
+	p := pipeline.NewDataPipeline(reader, writer)
 
-	writer, err := filesystem.NewCSVRecordWriter(ctx, csvFilePath, schema, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
+	// Start pipeline
+	err = p.Start(ctx)
 	if err != nil {
-		firstRecord.Release()
-		return fmt.Errorf("error while creating CSV writer: %w", err)
-	}
-
-	if err := writer.Write(firstRecord); err != nil {
-		firstRecord.Release()
-		return fmt.Errorf("error writing the first record to CSV file: %w", err)
-	}
-	firstRecord.Release()
-
-	for {
-		record, err := reader.Read()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return fmt.Errorf("error reading from Parquet file: %w", err)
-		}
-
-		if err := writer.Write(record); err != nil {
-			return fmt.Errorf("error writing to CSV file: %w", err)
-		}
-
-		record.Release()
+		return fmt.Errorf("failed to convert Parquet to CSV: %w", err)
 	}
 
 	return nil
-}
-
-func filterSchema(schema *arrow.Schema, columns []string) *arrow.Schema {
-	fields := make([]arrow.Field, 0, len(columns))
-	for _, col := range columns {
-		for _, field := range schema.Fields() {
-			if field.Name == col {
-				fields = append(fields, field)
-				break
-			}
-		}
-	}
-	return arrow.NewSchema(fields, nil)
 }
