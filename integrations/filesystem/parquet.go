@@ -36,200 +36,159 @@ import (
 	"os"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/parquet"
 	"github.com/apache/arrow/go/v17/parquet/compress"
 	"github.com/apache/arrow/go/v17/parquet/file"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	pool "github.com/arrowarc/arrowarc/internal/memory"
 )
 
-// ParquetWriteOptions provides options for writing Parquet files.
-type ParquetWriteOptions struct {
-	Compression        compress.Compression
-	MaxRowGroupLength  int64
-	AllowTruncatedRows bool
-	Buffered           bool
-	WriterAllocator    memory.Allocator
-	ArrowWriterProps   pqarrow.ArrowWriterProperties
-	ParquetWriterProps *parquet.WriterProperties
+// ParquetReader reads Parquet files and implements the Reader interface.
+type ParquetReader struct {
+	recordReader pqarrow.RecordReader
+	fileReader   *file.Reader
+	schema       *arrow.Schema
+	alloc        memory.Allocator
+}
+
+// ReadOptions defines options for reading Parquet files.
+type ParquetReadOptions struct {
+	MemoryMap     bool
+	ColumnIndices []int
+	RowGroups     []int
+	Parallel      bool
+	ChunkSize     int64
+}
+
+func (o *ParquetReadOptions) toArrowReadProperties() pqarrow.ArrowReadProperties {
+	return pqarrow.ArrowReadProperties{
+		Parallel:  true,
+		BatchSize: 64 * 1024 * 1024, // 64MB batch size
+	}
 }
 
 // NewDefaultParquetWriteOptions returns default write options for Parquet files.
-func NewDefaultParquetWriteOptions() *ParquetWriteOptions {
-	mem := memory.NewGoAllocator()
-	return &ParquetWriteOptions{
-		Compression:        compress.Codecs.Snappy,
-		MaxRowGroupLength:  128 * 1024 * 1024, // 128MB by default
-		AllowTruncatedRows: false,
-		Buffered:           false,
-		WriterAllocator:    mem,
-		ArrowWriterProps:   pqarrow.DefaultWriterProps(),
-		ParquetWriterProps: parquet.NewWriterProperties(
-			parquet.WithAllocator(mem),
-			parquet.WithCompression(compress.Codecs.Snappy),
-			parquet.WithMaxRowGroupLength(128*1024*1024), // 128MB by default
-		),
-	}
+func NewDefaultParquetWriteOptions() pqarrow.ArrowWriterProperties {
+	return pqarrow.NewArrowWriterProperties()
 }
 
-// parquetRecordReader implements arrio.Reader for reading records from Parquet files.
-type parquetRecordReader struct {
-	recordReader pqarrow.RecordReader
-	parquetRdr   *file.Reader
-	schema       *arrow.Schema
+// NewDefaultParquetWriterProperties returns default writer properties.
+func NewDefaultParquetWriterProperties() *parquet.WriterProperties {
+	return parquet.NewWriterProperties(
+		parquet.WithCompression(compress.Codecs.Snappy),
+		parquet.WithBatchSize(64*1024*1024), // 64MB batch size
+		parquet.WithAllocator(pool.GetAllocator()),
+	)
 }
 
-// Read reads the next record from the Parquet file.
-func (r *parquetRecordReader) Read() (arrow.Record, error) {
-	if !r.recordReader.Next() {
-		if err := r.recordReader.Err(); err != nil && err != io.EOF {
-			return nil, err
-		}
-		return nil, io.EOF
-	}
-	return r.recordReader.Record(), nil
-}
+// NewParquetReader creates a new Parquet file reader.
+func NewParquetReader(ctx context.Context, filePath string, opts *ParquetReadOptions) (*ParquetReader, error) {
+	alloc := pool.GetAllocator()
 
-// Schema returns the schema of the records being read from the Parquet file.
-func (r *parquetRecordReader) Schema() *arrow.Schema {
-	return r.schema
-}
-
-// Close closes the Parquet reader.
-func (r *parquetRecordReader) Close() error {
-	return r.parquetRdr.Close()
-}
-
-// ReadParquetFileStream reads records from a Parquet file and returns a reader that implements arrio.Reader.
-func ReadParquetFileStream(ctx context.Context, filePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool) (arrio.Reader, error) {
-	if chunkSize == 0 {
-		chunkSize = 1024 // Default to 1KB
-	}
-
-	parquetRdr, err := file.OpenParquetFile(filePath, memoryMap)
+	rdr, err := file.OpenParquetFile(filePath, opts.MemoryMap)
 	if err != nil {
+		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to open Parquet file: %w", err)
 	}
 
-	arrowReadProps := pqarrow.ArrowReadProperties{
-		BatchSize: chunkSize,
-		Parallel:  parallel,
-	}
-
-	arrowRdr, err := pqarrow.NewFileReader(parquetRdr, arrowReadProps, memory.DefaultAllocator)
+	fileReader, err := pqarrow.NewFileReader(rdr, opts.toArrowReadProperties(), alloc)
 	if err != nil {
-		parquetRdr.Close()
+		pool.PutAllocator(alloc)
+		rdr.Close()
 		return nil, fmt.Errorf("failed to create Arrow file reader: %w", err)
 	}
 
-	schema, err := arrowRdr.Schema()
+	schema, err := fileReader.Schema()
 	if err != nil {
-		parquetRdr.Close()
+		pool.PutAllocator(alloc)
+		rdr.Close()
 		return nil, fmt.Errorf("failed to get schema: %w", err)
 	}
 
-	var colIndices []int
-	if len(columns) == 0 {
-		colIndices = nil
-	} else {
-		for i, field := range schema.Fields() {
-			for _, colName := range columns {
-				if field.Name == colName {
-					colIndices = append(colIndices, i)
-				}
-			}
-		}
-	}
-
-	if len(rowGroups) == 0 {
-		rowGroups = nil
-	}
-
-	recordReader, err := arrowRdr.GetRecordReader(ctx, colIndices, rowGroups)
+	recordReader, err := fileReader.GetRecordReader(ctx, opts.ColumnIndices, opts.RowGroups)
 	if err != nil {
-		parquetRdr.Close()
-		return nil, fmt.Errorf("failed to get record reader: %w", err)
+		pool.PutAllocator(alloc)
+		rdr.Close()
+		return nil, fmt.Errorf("failed to create record reader: %w", err)
 	}
 
-	return &parquetRecordReader{
+	return &ParquetReader{
 		recordReader: recordReader,
-		parquetRdr:   parquetRdr,
+		fileReader:   rdr,
 		schema:       schema,
+		alloc:        alloc,
 	}, nil
 }
 
-// parquetRecordWriter implements arrio.Writer for writing records to Parquet files.
-type parquetRecordWriter struct {
-	writer *pqarrow.FileWriter
-	file   *os.File
-	schema *arrow.Schema
+func (p *ParquetReader) Read() (arrow.Record, error) {
+	if p.recordReader.Next() {
+		record := p.recordReader.Record()
+		record.Retain() // Retain the record to ensure it stays valid
+		return record, nil
+	}
+	if err := p.recordReader.Err(); err != nil && err != io.EOF {
+		return nil, err
+	}
+	return nil, io.EOF
 }
 
-// Write writes a record to the Parquet file.
-func (w *parquetRecordWriter) Write(record arrow.Record) error {
-	if err := w.writer.Write(record); err != nil {
-		return fmt.Errorf("failed to write record to Parquet: %w", err)
+func (p *ParquetReader) Close() error {
+	defer pool.PutAllocator(p.alloc)
+	p.recordReader.Release()
+	return p.fileReader.Close()
+}
+
+func (p *ParquetReader) Schema() *arrow.Schema {
+	return p.schema
+}
+
+// ParquetWriter writes records to Parquet files.
+type ParquetWriter struct {
+	writer *pqarrow.FileWriter
+	file   *os.File
+	alloc  memory.Allocator
+}
+
+// NewParquetWriter creates a new Parquet file writer.
+func NewParquetWriter(
+	filePath string, schema *arrow.Schema,
+	parquetWriterProps *parquet.WriterProperties,
+) (*ParquetWriter, error) {
+
+	alloc := pool.GetAllocator()
+
+	file, err := os.Create(filePath)
+	if err != nil {
+		pool.PutAllocator(alloc)
+		return nil, fmt.Errorf("failed to create file: %w", err)
+	}
+
+	writer, err := pqarrow.NewFileWriter(schema, file, parquetWriterProps, pqarrow.NewArrowWriterProperties())
+	if err != nil {
+		file.Close()
+		pool.PutAllocator(alloc)
+		return nil, fmt.Errorf("failed to create Parquet writer: %w", err)
+	}
+
+	return &ParquetWriter{
+		writer: writer,
+		file:   file,
+		alloc:  alloc,
+	}, nil
+}
+
+func (p *ParquetWriter) Write(record arrow.Record) error {
+	if err := p.writer.Write(record); err != nil {
+		return fmt.Errorf("failed to write record: %w", err)
 	}
 	return nil
 }
 
-// Close closes the Parquet writer.
-func (w *parquetRecordWriter) Close() error {
-	if err := w.writer.Close(); err != nil {
+func (p *ParquetWriter) Close() error {
+	defer pool.PutAllocator(p.alloc)
+	if err := p.writer.Close(); err != nil {
 		return fmt.Errorf("failed to close Parquet writer: %w", err)
 	}
-	return w.file.Close()
-}
-
-// Schema returns the schema of the records being written to the Parquet file.
-func (w *parquetRecordWriter) Schema() *arrow.Schema {
-	return w.schema
-}
-
-// WriteParquetFileStream writes records from a reader to a Parquet file.
-func WriteParquetFileStream(ctx context.Context, filePath string, reader arrio.Reader, opts *ParquetWriteOptions) error {
-	if opts == nil {
-		opts = NewDefaultParquetWriteOptions()
-	}
-
-	file, err := os.Create(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
-	}
-	defer file.Close()
-
-	var parquetWriter *pqarrow.FileWriter
-	defer func() {
-		if parquetWriter != nil {
-			parquetWriter.Close()
-		}
-	}()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		record, err := reader.Read()
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return fmt.Errorf("failed to read record: %w", err)
-		}
-
-		if parquetWriter == nil {
-			parquetWriter, err = pqarrow.NewFileWriter(record.Schema(), file, opts.ParquetWriterProps, opts.ArrowWriterProps)
-			if err != nil {
-				return fmt.Errorf("failed to create Parquet writer: %w", err)
-			}
-		}
-
-		if err := parquetWriter.Write(record); err != nil {
-			return fmt.Errorf("failed to write record to Parquet: %w", err)
-		}
-	}
+	return p.file.Close()
 }
