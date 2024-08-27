@@ -1,8 +1,6 @@
 ![Alt text](assets/images/ArrowArcLogo.png)
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/arrowarc/arrowarc)](https://goreportcard.com/report/github.com/arrowarc/arrowarc) 
-[![ArrowArc Build](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml/badge.svg)](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml) 
-[![Go Reference](https://pkg.go.dev/badge/github.com/arrowarc/arrowarc@v0.1.0.svg)](https://pkg.go.dev/github.com/arrowarc/arrowarc@v0.1.0)
+[![Go Report Card](https://goreportcard.com/badge/github.com/arrowarc/arrowarc)](https://goreportcard.com/report/github.com/arrowarc/arrowarc) [![ArrowArc Build](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml/badge.svg)](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/arrowarc/arrowarc@v0.1.0.svg)](https://pkg.go.dev/github.com/arrowarc/arrowarc@v0.1.0)
 
 **Welcome to ArrowArc**—a passion-driven project designed to push the boundaries of data processing speed on modern hardware. ArrowArc isn't here to rival the giants of Big Data; instead, it’s an exploration of how efficiently data can be moved and processed using Go and Apache Arrow, leveraging today's powerful tools.
 
