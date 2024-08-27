@@ -33,7 +33,7 @@ import (
 	"os"
 	"testing"
 
-	. "github.com/arrowarc/arrowarc/pkg/parquet"
+	generator "github.com/arrowarc/arrowarc/generator"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -70,7 +70,7 @@ func TestGenerateParquetFile(t *testing.T) {
 			})
 
 			// Generate the Parquet file
-			err := GenerateParquetFile(test.filePath, test.targetSize, test.complex)
+			err := generator.GenerateParquetFile(test.filePath, test.targetSize, test.complex)
 			assert.NoError(t, err, "Error should be nil when generating Parquet file")
 
 			// Check the generated file's properties
