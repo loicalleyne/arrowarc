@@ -1,1 +1,5 @@
 Dockerfile linguist-language=ignore
+*.md linguist-documentation
+*.yaml linguist-generated
+*.yml linguist-generated
+*.json linguist-generated
