@@ -43,11 +43,8 @@ reader, err := bq.NewBigQueryArrowReader(ctx, projectID, datasetID, tableID)
 conn, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)
 writer, err := integrations.NewDuckDBRecordWriter(ctx, conn, "test_table")
 
-// Create the data pipeline
-dp := pipeline.NewDataPipeline(reader, writer)
-
-// Start the pipeline and handle errors
-err = dp.Start(ctx)
+// Create and start the data pipeline
+p := pipeline.NewDataPipeline(reader, writer).Start(ctx)
 ```
 
 ---
