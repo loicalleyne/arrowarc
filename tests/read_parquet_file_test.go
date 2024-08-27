@@ -36,9 +36,10 @@ import (
 	"testing"
 	"time"
 
+	generator "github.com/arrowarc/arrowarc/generator"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReadParquetFileStream(t *testing.T) {
@@ -51,8 +52,8 @@ func TestReadParquetFileStream(t *testing.T) {
 
 	// Generate a sample Parquet file for testing
 	filePath := "sample_test.parquet"
-	err := parquet.GenerateParquetFile(filePath, 100*1024, false) // 100 KB, simple structure
-	assert.NoError(t, err, "Error should be nil when generating Parquet file")
+	err := generator.GenerateParquetFile(filePath, 100*1024, false) // 100 KB, simple structure
+	require.NoError(t, err, "Error should be nil when generating Parquet file")
 
 	// Use t.Cleanup to ensure the file is removed after all tests complete
 	t.Cleanup(func() {
@@ -105,9 +106,14 @@ func TestReadParquetFileStream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			// Call the refactored ReadParquetFileStream function
-			reader, err := integrations.ReadParquetFileStream(ctx, test.filePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel)
-			assert.NoError(t, err, "Error should be nil when creating Parquet reader")
+			reader, err := integrations.NewParquetReader(ctx, test.filePath, &integrations.ParquetReadOptions{
+				MemoryMap: test.memoryMap,
+				ChunkSize: test.chunkSize,
+				RowGroups: test.rowGroups,
+				Parallel:  test.parallel,
+			})
+			require.NoError(t, err, "Error should be nil when creating Parquet reader")
+			require.NotNil(t, reader.Schema(), "Schema should not be nil")
 
 			var recordsRead int
 			for {

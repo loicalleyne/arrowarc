@@ -39,9 +39,9 @@ import (
 	storage "cloud.google.com/go/bigquery/storage/apiv1"
 	storagepb "cloud.google.com/go/bigquery/storage/apiv1/storagepb"
 	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"google.golang.org/api/option"
 )
@@ -53,20 +53,19 @@ type BigQueryWriteClient struct {
 
 type BigQueryWriteOptions struct {
 	WriteStreamType storagepb.WriteStream_Type
-	WriterAllocator memory.Allocator
+	Allocator       memory.Allocator
 }
 
 func NewDefaultBigQueryWriteOptions() *BigQueryWriteOptions {
 	return &BigQueryWriteOptions{
 		WriteStreamType: storagepb.WriteStream_COMMITTED,
-		WriterAllocator: memory.NewGoAllocator(),
+		Allocator:       memoryPool.GetAllocator(),
 	}
 }
 
 func NewBigQueryWriteClient(ctx context.Context, serviceAccountJSON string, schema *arrow.Schema) (*BigQueryWriteClient, error) {
-	// Check if the provided string is a file path by checking if the file exists
+	// Check if the provided string is a file path
 	if _, err := os.Stat(serviceAccountJSON); err == nil {
-		// If it's a file path, read the file content
 		content, err := os.ReadFile(serviceAccountJSON)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read service account JSON file: %w", err)
@@ -85,7 +84,7 @@ func NewBigQueryWriteClient(ctx context.Context, serviceAccountJSON string, sche
 	}, nil
 }
 
-type bigQueryRecordWriter struct {
+type BigQueryRecordWriter struct {
 	client        *BigQueryWriteClient
 	appendClient  storagepb.BigQueryWrite_AppendRowsClient
 	writeStream   *storagepb.WriteStream
@@ -96,7 +95,7 @@ type bigQueryRecordWriter struct {
 	writerOptions *BigQueryWriteOptions
 }
 
-func NewBigQueryRecordWriter(ctx context.Context, client *BigQueryWriteClient, projectID, datasetID, tableID string, opts *BigQueryWriteOptions) (arrio.Writer, error) {
+func NewBigQueryRecordWriter(ctx context.Context, client *BigQueryWriteClient, projectID, datasetID, tableID string, opts *BigQueryWriteOptions) (*BigQueryRecordWriter, error) {
 	if opts == nil {
 		opts = NewDefaultBigQueryWriteOptions()
 	}
@@ -119,9 +118,9 @@ func NewBigQueryRecordWriter(ctx context.Context, client *BigQueryWriteClient, p
 	}
 
 	buffer := &bytes.Buffer{}
-	ipcWriter := ipc.NewWriter(buffer, ipc.WithSchema(client.schema), ipc.WithAllocator(opts.WriterAllocator))
+	ipcWriter := ipc.NewWriter(buffer, ipc.WithSchema(client.schema), ipc.WithAllocator(opts.Allocator))
 
-	return &bigQueryRecordWriter{
+	return &BigQueryRecordWriter{
 		client:        client,
 		appendClient:  appendClient,
 		writeStream:   writeStream,
@@ -132,7 +131,7 @@ func NewBigQueryRecordWriter(ctx context.Context, client *BigQueryWriteClient, p
 	}, nil
 }
 
-func (w *bigQueryRecordWriter) Write(record arrow.Record) error {
+func (w *BigQueryRecordWriter) Write(record arrow.Record) error {
 	if !w.client.schema.Equal(record.Schema()) {
 		return fmt.Errorf("schema mismatch: expected %v but got %v", w.client.schema, record.Schema())
 	}
@@ -171,7 +170,7 @@ func (w *bigQueryRecordWriter) Write(record arrow.Record) error {
 	return nil
 }
 
-func (w *bigQueryRecordWriter) Close() error {
+func (w *BigQueryRecordWriter) Close() error {
 	w.writeDone.Wait()
 
 	if err := w.ipcWriter.Close(); err != nil {
@@ -181,6 +180,8 @@ func (w *bigQueryRecordWriter) Close() error {
 	_, err := w.client.client.FinalizeWriteStream(context.TODO(), &storagepb.FinalizeWriteStreamRequest{
 		Name: w.writeStream.GetName(),
 	})
+
+	defer memoryPool.PutAllocator(w.writerOptions.Allocator)
 
 	return err
 }

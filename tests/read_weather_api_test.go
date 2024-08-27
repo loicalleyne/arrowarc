@@ -58,7 +58,7 @@ func TestWeatherAPIStream(t *testing.T) {
 	client := http.DefaultClient
 
 	// Create a new WeatherAPIReader
-	reader, err := weather.NewWeatherAPIReader(ctx, cities, client)
+	reader, err := weather.NewWeatherReader(ctx, cities, client)
 	assert.NoError(t, err, "Error should be nil when creating Weather API reader")
 
 	// Read records from the Weather API

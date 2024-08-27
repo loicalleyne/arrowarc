@@ -32,43 +32,62 @@ package integrations
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/goccy/go-json"
+
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	pool "github.com/arrowarc/arrowarc/internal/memory"
 )
 
-// JSONRecordReader implements arrio.Reader for reading records from JSON files.
-type JSONRecordReader struct {
+// JSONReader reads records from a JSON file and implements the Reader interface.
+type JSONReader struct {
 	ctx        context.Context
 	file       *os.File
 	jsonReader *array.JSONReader
 	schema     *arrow.Schema
+	alloc      memory.Allocator
 }
 
-// NewJSONRecordReader creates a new reader for reading records from a JSON file.
-func NewJSONRecordReader(ctx context.Context, filePath string, schema *arrow.Schema, chunkSize int) (arrio.Reader, error) {
+// JSONWriter writes records to a JSON file and implements the Writer interface.
+type JSONWriter struct {
+	file    *os.File
+	encoder *json.Encoder
+	alloc   memory.Allocator
+}
+
+// JSONReadOptions defines options for reading JSON files.
+type JSONReadOptions struct {
+	ChunkSize int
+}
+
+// NewJSONReader creates a new reader for reading records from a JSON file.
+func NewJSONReader(ctx context.Context, filePath string, schema *arrow.Schema, opts *JSONReadOptions) (*JSONReader, error) {
+	alloc := pool.GetAllocator()
+
 	file, err := os.Open(filePath)
 	if err != nil {
+		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to open JSON file: %w", err)
 	}
 
-	jsonReader := array.NewJSONReader(file, schema, array.WithChunk(chunkSize))
+	jsonReader := array.NewJSONReader(file, schema, array.WithChunk(opts.ChunkSize))
 
-	return &JSONRecordReader{
+	return &JSONReader{
 		ctx:        ctx,
 		file:       file,
 		jsonReader: jsonReader,
 		schema:     schema,
+		alloc:      alloc,
 	}, nil
 }
 
 // Read reads the next record from the JSON file.
-func (r *JSONRecordReader) Read() (arrow.Record, error) {
+func (r *JSONReader) Read() (arrow.Record, error) {
 	select {
 	case <-r.ctx.Done():
 		return nil, r.ctx.Err()
@@ -90,39 +109,38 @@ func (r *JSONRecordReader) Read() (arrow.Record, error) {
 }
 
 // Schema returns the schema of the records being read from the JSON file.
-func (r *JSONRecordReader) Schema() *arrow.Schema {
+func (r *JSONReader) Schema() *arrow.Schema {
 	return r.schema
 }
 
 // Close releases resources associated with the JSON reader.
-func (r *JSONRecordReader) Close() error {
+func (r *JSONReader) Close() error {
+	defer pool.PutAllocator(r.alloc)
 	r.jsonReader.Release()
 	return r.file.Close()
 }
 
-// JSONRecordWriter implements arrio.Writer for writing records to JSON files.
-type JSONRecordWriter struct {
-	file    *os.File
-	encoder *json.Encoder
-}
+// NewJSONWriter creates a new writer for writing records to a JSON file.
+func NewJSONWriter(ctx context.Context, filePath string) (*JSONWriter, error) {
+	alloc := pool.GetAllocator()
 
-// NewJSONRecordWriter creates a new writer for writing records to a JSON file.
-func NewJSONRecordWriter(ctx context.Context, filePath string) (arrio.Writer, error) {
 	file, err := os.Create(filePath)
 	if err != nil {
+		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to create JSON file: %w", err)
 	}
 
 	encoder := json.NewEncoder(file)
 
-	return &JSONRecordWriter{
+	return &JSONWriter{
 		file:    file,
 		encoder: encoder,
+		alloc:   alloc,
 	}, nil
 }
 
 // Write writes a record to the JSON file.
-func (w *JSONRecordWriter) Write(record arrow.Record) error {
+func (w *JSONWriter) Write(record arrow.Record) error {
 	structArray := array.RecordToStructArray(record)
 	if err := w.encoder.Encode(structArray); err != nil {
 		return fmt.Errorf("error writing JSON record: %w", err)
@@ -131,37 +149,9 @@ func (w *JSONRecordWriter) Write(record arrow.Record) error {
 }
 
 // Close closes the JSON writer.
-func (w *JSONRecordWriter) Close() error {
+func (w *JSONWriter) Close() error {
+	defer pool.PutAllocator(w.alloc)
 	return w.file.Close()
-}
-
-// WriteJSONFileStream writes records from a reader to a JSON file.
-func WriteJSONFileStream(ctx context.Context, filePath string, reader arrio.Reader) error {
-	writer, err := NewJSONRecordWriter(ctx, filePath)
-	if err != nil {
-		return fmt.Errorf("failed to create JSON writer: %w", err)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		record, err := reader.Read()
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return fmt.Errorf("failed to read record: %w", err)
-		}
-
-		if err := writer.Write(record); err != nil {
-			return fmt.Errorf("failed to write record to JSON: %w", err)
-		}
-		record.Release()
-	}
 }
 
 // Marshal safely marshals the provided value to JSON.

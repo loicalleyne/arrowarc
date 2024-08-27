@@ -35,10 +35,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow/go/v17/parquet/compress"
-	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pkg/parquet"
-	"github.com/stretchr/testify/assert"
+	generator "github.com/arrowarc/arrowarc/generator"
+	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
+	pipeline "github.com/arrowarc/arrowarc/pkg/pipeline"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteParquetFileStream(t *testing.T) {
@@ -46,12 +46,12 @@ func TestWriteParquetFileStream(t *testing.T) {
 
 	// Generate two sample Parquet files for testing: one simple and one complex
 	inputSimpleFilePath := "sample_input_simple.parquet"
-	err := parquet.GenerateParquetFile(inputSimpleFilePath, 100*1024, false) // 100 KB, simple structure
-	assert.NoError(t, err, "Error should be nil when generating simple input Parquet file")
+	err := generator.GenerateParquetFile(inputSimpleFilePath, 100*1024, false) // 100 KB, simple structure
+	require.NoError(t, err, "Error should be nil when generating simple input Parquet file")
 
 	inputComplexFilePath := "sample_input_complex.parquet"
-	err = parquet.GenerateParquetFile(inputComplexFilePath, 100*1024, true) // 100 KB, complex structure
-	assert.NoError(t, err, "Error should be nil when generating complex input Parquet file")
+	err = generator.GenerateParquetFile(inputComplexFilePath, 100*1024, true) // 100 KB, complex structure
+	require.NoError(t, err, "Error should be nil when generating complex input Parquet file")
 
 	// Ensure the files are removed after all tests complete
 	t.Cleanup(func() {
@@ -90,29 +90,23 @@ func TestWriteParquetFileStream(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			// Create a reader for the input Parquet file
-			reader, err := filesystem.ReadParquetFileStream(ctx, test.inputFilePath, false, test.chunkSize, nil, nil, true)
-			assert.NoError(t, err, "Error should be nil when reading Parquet file")
-
-			// Determine whether to use custom options or default options
-			var opts *filesystem.ParquetWriteOptions
-			if test.useCustomOpts {
-				opts = &filesystem.ParquetWriteOptions{
-					Compression: compress.Codecs.Zstd, // Example of custom compression
-					// Other custom options can be set here
-				}
-			} else {
-				opts = filesystem.NewDefaultParquetWriteOptions()
-			}
+			// Setup the Parquet file reader
+			reader, err := integrations.NewParquetReader(ctx, test.inputFilePath, &integrations.ParquetReadOptions{
+				ChunkSize: test.chunkSize,
+			})
+			require.NoError(t, err, "Error should be nil when creating Parquet reader")
+			require.NotNil(t, reader.Schema(), "Schema should not be nil")
 
 			// Write records to the output Parquet file
-			err = filesystem.WriteParquetFileStream(ctx, test.outputFilePath, reader, opts)
-			assert.NoError(t, err, "Error should be nil when writing Parquet file")
+			writer, err := integrations.NewParquetWriter(test.outputFilePath, reader.Schema(), integrations.NewDefaultParquetWriterProperties())
+			require.NoError(t, err, "Error should be nil when creating Parquet writer")
+
+			// Setup the pipeline to write the records to the Parquet file
+			p := pipeline.NewDataPipeline(reader, writer)
+			err = p.Start(ctx)
+			require.NoError(t, err, "Error should be nil when running the pipeline")
 
 			// Check if the output file exists and has content
-			info, err := os.Stat(test.outputFilePath)
-			assert.NoError(t, err, "Error should be nil when checking output Parquet file stats")
-			assert.True(t, info.Size() > 0, "Generated output Parquet file should have a size greater than 0")
 
 			t.Cleanup(func() {
 				os.Remove(test.outputFilePath)

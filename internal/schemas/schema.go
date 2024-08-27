@@ -27,50 +27,14 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package test
+package schemas
 
 import (
-	"context"
-	"io"
-	"os"
-	"testing"
-	"time"
-
 	"github.com/apache/arrow/go/v17/arrow"
-	. "github.com/arrowarc/arrowarc/integrations/filesystem"
-	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
-	"github.com/stretchr/testify/assert"
+	"github.com/apache/arrow/go/v17/arrow/arrio"
 )
 
-func TestReadIcebergFileStream(t *testing.T) {
-	// If testing on GitHub Actions, skip this test because DuckDB shared library is not available. TODO: Fix this.
-	if os.Getenv("CI") == "true" {
-		t.Skip("Skipping Iceberg file stream test in CI environment.")
-	}
-
-	// Publicly available Iceberg dataset (replace with an actual public URL if available)
-	icebergFilePath := "https://public-datasets.s3.amazonaws.com/iceberg/tpch/lineitem"
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	reader, err := ReadIcebergFileStream(ctx, icebergFilePath)
-	assert.NoError(t, err, "Error should be nil when reading from Iceberg file stream")
-
-	var records []arrow.Record
-	for {
-		rec, err := reader.Read()
-		if err == context.Canceled || err == io.EOF {
-			break
-		}
-		assert.NoError(t, err, "Error should be nil when reading from Iceberg file stream")
-		assert.NotNil(t, rec, "Record should not be nil when reading from Iceberg file")
-		records = append(records, rec)
-		helper.PrintRecordBatch(rec)
-		rec.Release()
-	}
-
-	assert.Greater(t, len(records), 0, "There should be at least 1 record returned from the Iceberg file")
-
-	assert.NoError(t, err, "Error should be nil when closing the Iceberg file reader")
+type SchemaReader interface {
+	arrio.Reader
+	Schema() *arrow.Schema
 }

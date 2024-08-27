@@ -40,9 +40,9 @@ import (
 	bqStorage "cloud.google.com/go/bigquery/storage/apiv1"
 	storagepb "cloud.google.com/go/bigquery/storage/apiv1/storagepb"
 	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
@@ -100,7 +100,7 @@ func defaultBigQueryReadCallOptions() *BigQueryReadCallOptions {
 	}
 }
 
-func (bq *BigQueryReadClient) NewBigQueryArrowReader(ctx context.Context, projectID, datasetID, tableID string) (arrio.Reader, error) {
+func (bq *BigQueryReadClient) NewBigQueryArrowReader(ctx context.Context, projectID, datasetID, tableID string) (*BigQueryArrowReader, error) {
 	req := &storagepb.CreateReadSessionRequest{
 		Parent: fmt.Sprintf("projects/%s", projectID),
 		ReadSession: &storagepb.ReadSession{
@@ -119,34 +119,37 @@ func (bq *BigQueryReadClient) NewBigQueryArrowReader(ctx context.Context, projec
 		return nil, fmt.Errorf("no streams available in session")
 	}
 
-	return &bigQueryArrowReader{
+	alloc := memoryPool.GetAllocator()
+
+	return &BigQueryArrowReader{
 		ctx:         ctx,
 		client:      bq.client,
 		callOptions: bq.callOptions,
 		schemaBytes: session.GetArrowSchema().GetSerializedSchema(),
 		streams:     session.GetStreams(),
-		mem:         memory.NewGoAllocator(),
+		mem:         alloc,
+		buf:         bytes.NewBuffer(nil),
 	}, nil
 }
 
-type bigQueryArrowReader struct {
+type BigQueryArrowReader struct {
 	ctx         context.Context
 	client      *bqStorage.BigQueryReadClient
 	callOptions *BigQueryReadCallOptions
 	schemaBytes []byte
 	streams     []*storagepb.ReadStream
-	mem         *memory.GoAllocator
+	mem         memory.Allocator
 
 	streamIdx int
-	once      sync.Once
-	buf       *bytes.Buffer
 	r         *ipc.Reader
+	buf       *bytes.Buffer
+	once      sync.Once
 }
 
-func (r *bigQueryArrowReader) Read() (arrow.Record, error) {
+func (r *BigQueryArrowReader) Read() (arrow.Record, error) {
 	var err error
 	r.once.Do(func() {
-		r.buf = bytes.NewBuffer(r.schemaBytes)
+		r.buf.Write(r.schemaBytes)
 		r.r, err = ipc.NewReader(r.buf, ipc.WithAllocator(r.mem))
 	})
 	if err != nil {
@@ -196,13 +199,14 @@ func (r *bigQueryArrowReader) Read() (arrow.Record, error) {
 	return nil, io.EOF
 }
 
-func (r *bigQueryArrowReader) Close() error {
+func (r *BigQueryArrowReader) Close() error {
+	defer memoryPool.PutAllocator(r.mem)
 	if r.r != nil {
 		r.r.Release()
 	}
 	return nil
 }
 
-func (r *bigQueryArrowReader) Schema() *arrow.Schema {
+func (r *BigQueryArrowReader) Schema() *arrow.Schema {
 	return r.r.Schema()
 }

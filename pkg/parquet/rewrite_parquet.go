@@ -34,10 +34,19 @@ import (
 	"errors"
 	"fmt"
 
-	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/apache/arrow/go/v17/parquet"
+	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/arrowarc/arrowarc/pkg/pipeline"
 )
 
-func RewriteParquetFile(ctx context.Context, inputFilePath, outputFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool) error {
+func RewriteParquetFile(
+	ctx context.Context,
+	inputFilePath, outputFilePath string,
+	memoryMap bool, chunkSize int64,
+	columns []string, rowGroups []int, parallel bool,
+	parquetWriterProps *parquet.WriterProperties,
+) error {
+	// Validate input parameters
 	if inputFilePath == "" {
 		return errors.New("input file path cannot be empty")
 	}
@@ -51,14 +60,42 @@ func RewriteParquetFile(ctx context.Context, inputFilePath, outputFilePath strin
 		return errors.New("context cannot be nil")
 	}
 
-	reader, err := filesystem.ReadParquetFileStream(ctx, inputFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
-	if err != nil {
-		return fmt.Errorf("failed to start reading parquet file: %s, %w", inputFilePath, err)
+	// Create read options
+	readOptions := &integrations.ParquetReadOptions{
+		MemoryMap: memoryMap,
+		Parallel:  true,
+		ChunkSize: chunkSize,
+	}
+	if parallel {
+		readOptions.Parallel = true
 	}
 
-	opts := filesystem.NewDefaultParquetWriteOptions()
-	if err := filesystem.WriteParquetFileStream(ctx, outputFilePath, reader, opts); err != nil {
-		return fmt.Errorf("error writing to parquet file: %s, %w", outputFilePath, err)
+	// Create the Parquet reader
+	reader, err := integrations.NewParquetReader(ctx, inputFilePath, readOptions)
+	if err != nil {
+		return fmt.Errorf("failed to create Parquet reader: %w", err)
+	}
+	defer reader.Close()
+
+	// Use provided ParquetWriter properties or default if none provided
+	if parquetWriterProps == nil {
+		parquetWriterProps = integrations.NewDefaultParquetWriterProperties()
+	}
+
+	// Create the Parquet writer
+	writer, err := integrations.NewParquetWriter(outputFilePath, reader.Schema(), parquetWriterProps)
+	if err != nil {
+		return fmt.Errorf("failed to create Parquet writer: %w", err)
+	}
+	defer writer.Close()
+
+	// Create the data pipeline
+	dp := pipeline.NewDataPipeline(reader, writer)
+
+	// Start the pipeline and handle errors
+	err = dp.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to rewrite Parquet file: %w", err)
 	}
 
 	return nil

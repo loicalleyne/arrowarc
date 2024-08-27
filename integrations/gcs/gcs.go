@@ -33,18 +33,18 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"strings"
 
 	"cloud.google.com/go/storage"
 	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/csv"
-	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/apache/arrow/go/v17/parquet"
 	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	pool "github.com/arrowarc/arrowarc/internal/memory"
 	"google.golang.org/api/option"
 )
 
+// FileFormat represents the supported file formats for output.
 type FileFormat string
 
 const (
@@ -52,11 +52,13 @@ const (
 	CSVFormat     FileFormat = "csv"
 )
 
+// GCSSink represents a Google Cloud Storage sink for writing files.
 type GCSSink struct {
 	client     *storage.Client
 	bucketName string
 }
 
+// NewGCSSink creates a new GCSSink with the specified bucket name and credentials file.
 func NewGCSSink(ctx context.Context, bucketName, credsFile string) (*GCSSink, error) {
 	client, err := storage.NewClient(ctx, option.WithCredentialsFile(credsFile))
 	if err != nil {
@@ -69,41 +71,34 @@ func NewGCSSink(ctx context.Context, bucketName, credsFile string) (*GCSSink, er
 	}, nil
 }
 
-func (s *GCSSink) WriteToGCS(ctx context.Context, reader arrio.Reader, filePath string, format FileFormat, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) <-chan error {
-	errChan := make(chan error, 1)
+// WriteToGCS writes data from an Arrow reader to a GCS object in the specified format.
+func (s *GCSSink) WriteToGCS(ctx context.Context, reader arrio.Reader, filePath string, format FileFormat, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) error {
+	bucket := s.client.Bucket(s.bucketName)
+	obj := bucket.Object(filePath)
+	writer := obj.NewWriter(ctx)
+	defer writer.Close()
 
-	go func() {
-		defer close(errChan)
+	var err error
+	switch format {
+	case ParquetFormat:
+		err = s.writeParquet(ctx, reader, writer)
+	case CSVFormat:
+		err = s.writeCSV(ctx, reader, writer, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
+	default:
+		return fmt.Errorf("unsupported file format: %s", format)
+	}
 
-		bucket := s.client.Bucket(s.bucketName)
-		obj := bucket.Object(filePath)
-		writer := obj.NewWriter(ctx)
-		defer func() {
-			if cerr := writer.Close(); cerr != nil && errChan != nil {
-				errChan <- fmt.Errorf("failed to close GCS writer: %w", cerr)
-			}
-		}()
-
-		var err error
-		switch format {
-		case ParquetFormat:
-			err = s.writeParquet(ctx, reader, writer)
-		case CSVFormat:
-			err = s.writeCSV(ctx, reader, writer, delimiter, includeHeader, nullValue, stringsReplacer, boolFormatter)
-		default:
-			err = fmt.Errorf("unsupported file format: %s", format)
-		}
-
-		if err != nil {
-			errChan <- err
-		}
-	}()
-
-	return errChan
+	if err != nil {
+		return fmt.Errorf("failed to write to GCS: %w", err)
+	}
+	return nil
 }
 
+// writeParquet writes data from an Arrow reader to a Parquet file on GCS.
 func (s *GCSSink) writeParquet(ctx context.Context, reader arrio.Reader, writer io.Writer) error {
-	mem := memory.NewGoAllocator()
+	alloc := pool.GetAllocator()
+	defer pool.PutAllocator(alloc)
+
 	var parquetWriter *pqarrow.FileWriter
 	defer func() {
 		if parquetWriter != nil {
@@ -116,32 +111,35 @@ func (s *GCSSink) writeParquet(ctx context.Context, reader arrio.Reader, writer 
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-		}
-
-		record, err := reader.Read()
-		if err != nil {
+			record, err := reader.Read()
 			if err == io.EOF {
 				return nil
 			}
-			return fmt.Errorf("failed to read record: %w", err)
-		}
-
-		if parquetWriter == nil {
-			schema := record.Schema()
-			writerProps := parquet.NewWriterProperties(parquet.WithAllocator(mem), parquet.WithMaxRowGroupLength(math.MaxInt64))
-			parquetWriter, err = pqarrow.NewFileWriter(schema, writer, writerProps, pqarrow.DefaultWriterProps())
 			if err != nil {
-				return fmt.Errorf("failed to create Parquet writer: %w", err)
+				return fmt.Errorf("failed to read record: %w", err)
 			}
-		}
 
-		if err := parquetWriter.Write(record); err != nil {
-			return fmt.Errorf("failed to write record to Parquet: %w", err)
+			if parquetWriter == nil {
+				schema := record.Schema()
+				writerProps := parquet.NewWriterProperties(parquet.WithAllocator(alloc))
+				parquetWriter, err = pqarrow.NewFileWriter(schema, writer, writerProps, pqarrow.NewArrowWriterProperties())
+				if err != nil {
+					return fmt.Errorf("failed to create Parquet writer: %w", err)
+				}
+			}
+
+			if err := parquetWriter.Write(record); err != nil {
+				return fmt.Errorf("failed to write record to Parquet: %w", err)
+			}
 		}
 	}
 }
 
+// writeCSV writes data from an Arrow reader to a CSV file on GCS.
 func (s *GCSSink) writeCSV(ctx context.Context, reader arrio.Reader, writer io.Writer, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) error {
+	alloc := pool.GetAllocator()
+	defer pool.PutAllocator(alloc)
+
 	var csvWriter *csv.Writer
 
 	for {
@@ -149,40 +147,40 @@ func (s *GCSSink) writeCSV(ctx context.Context, reader arrio.Reader, writer io.W
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-		}
-
-		record, err := reader.Read()
-		if err != nil {
+			record, err := reader.Read()
 			if err == io.EOF {
 				if csvWriter != nil {
 					csvWriter.Flush()
 				}
 				return nil
 			}
-			return fmt.Errorf("failed to read record: %w", err)
-		}
+			if err != nil {
+				return fmt.Errorf("failed to read record: %w", err)
+			}
 
-		if csvWriter == nil {
-			csvWriter = csv.NewWriter(writer, record.Schema(),
-				csv.WithComma(delimiter),
-				csv.WithHeader(includeHeader),
-				csv.WithNullWriter(nullValue),
-				csv.WithStringsReplacer(stringsReplacer),
-				csv.WithBoolWriter(boolFormatter),
-			)
-			defer csvWriter.Flush()
-		}
+			if csvWriter == nil {
+				csvWriter = csv.NewWriter(writer, record.Schema(),
+					csv.WithComma(delimiter),
+					csv.WithHeader(includeHeader),
+					csv.WithNullWriter(nullValue),
+					csv.WithStringsReplacer(stringsReplacer),
+					csv.WithBoolWriter(boolFormatter),
+				)
+				defer csvWriter.Flush()
+			}
 
-		if err := csvWriter.Write(record); err != nil {
-			return fmt.Errorf("failed to write record to CSV: %w", err)
-		}
+			if err := csvWriter.Write(record); err != nil {
+				return fmt.Errorf("failed to write record to CSV: %w", err)
+			}
 
-		if err := csvWriter.Error(); err != nil {
-			return fmt.Errorf("CSV writer encountered an error: %w", err)
+			if err := csvWriter.Error(); err != nil {
+				return fmt.Errorf("CSV writer encountered an error: %w", err)
+			}
 		}
 	}
 }
 
+// Close releases resources associated with the GCSSink.
 func (s *GCSSink) Close() error {
 	return s.client.Close()
 }

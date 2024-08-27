@@ -39,15 +39,16 @@ import (
 	"github.com/apache/arrow-adbc/go/adbc/drivermgr"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 )
 
+// PostgresSource handles connection to a PostgreSQL database using ADBC.
 type PostgresSource struct {
 	conn adbc.Connection
 }
 
+// NewPostgresSource creates a new PostgresSource with an open ADBC connection.
 func NewPostgresSource(ctx context.Context, dbURL string) (*PostgresSource, error) {
-	var drv drivermgr.Driver
+	drv := drivermgr.Driver{}
 	db, err := drv.NewDatabase(map[string]string{
 		"driver":          "/usr/local/lib/libadbc_driver_postgresql.dylib",
 		adbc.OptionKeyURI: dbURL,
@@ -64,13 +65,15 @@ func NewPostgresSource(ctx context.Context, dbURL string) (*PostgresSource, erro
 	return &PostgresSource{conn: conn}, nil
 }
 
+// PostgresRecordReader reads records from a PostgreSQL table.
 type PostgresRecordReader struct {
 	ctx       context.Context
 	stmt      adbc.Statement
 	recordSet array.RecordReader
 }
 
-func (p *PostgresSource) GetPostgresRecordReader(ctx context.Context, tableName string) (arrio.Reader, error) {
+// GetPostgresRecordReader creates a PostgresRecordReader for the specified table.
+func (p *PostgresSource) GetPostgresRecordReader(ctx context.Context, tableName string) (*PostgresRecordReader, error) {
 	stmt, err := p.conn.NewStatement()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create statement: %w", err)
@@ -95,10 +98,11 @@ func (p *PostgresSource) GetPostgresRecordReader(ctx context.Context, tableName 
 	}, nil
 }
 
+// Read reads the next record from the PostgreSQL table.
 func (r *PostgresRecordReader) Read() (arrow.Record, error) {
 	if !r.recordSet.Next() {
 		if err := r.recordSet.Err(); err != nil && err != io.EOF {
-			return nil, err
+			return nil, fmt.Errorf("failed to read record: %w", err)
 		}
 		return nil, io.EOF
 	}
@@ -108,26 +112,30 @@ func (r *PostgresRecordReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
+// Schema returns the schema of the records being read.
+func (r *PostgresRecordReader) Schema() *arrow.Schema {
+	return r.recordSet.Schema()
+}
+
+// Close releases resources associated with the PostgresRecordReader.
 func (r *PostgresRecordReader) Close() error {
 	r.recordSet.Release()
 	return r.stmt.Close()
 }
 
+// Close closes the ADBC connection associated with PostgresSource.
 func (p *PostgresSource) Close() error {
 	return p.conn.Close()
 }
 
-func (r *PostgresRecordReader) Schema() *arrow.Schema {
-	return r.recordSet.Schema()
-}
-
+// PostgresSink handles writing records to a PostgreSQL database using ADBC.
 type PostgresSink struct {
 	conn adbc.Connection
 }
 
 // NewPostgresSink creates a new PostgresSink with an open ADBC connection.
 func NewPostgresSink(ctx context.Context, dbURL string) (*PostgresSink, error) {
-	var drv drivermgr.Driver
+	drv := drivermgr.Driver{}
 	db, err := drv.NewDatabase(map[string]string{
 		"driver":          "/usr/local/lib/libadbc_driver_postgresql.dylib",
 		adbc.OptionKeyURI: dbURL,
@@ -144,8 +152,8 @@ func NewPostgresSink(ctx context.Context, dbURL string) (*PostgresSink, error) {
 	return &PostgresSink{conn: conn}, nil
 }
 
-// IngestToPostgres ingests records from arrio.Reader into the specified PostgreSQL table.
-func (p *PostgresSink) IngestToPostgres(ctx context.Context, tableName string, schema *arrow.Schema, reader arrio.Reader) error {
+// IngestToPostgres ingests records from an arrow.Record into the specified PostgreSQL table.
+func (p *PostgresSink) IngestToPostgres(ctx context.Context, tableName string, schema *arrow.Schema, record arrow.Record) error {
 	// Construct the SQL query based on the schema
 	columns := make([]string, len(schema.Fields()))
 	values := make([]string, len(schema.Fields()))
@@ -166,37 +174,26 @@ func (p *PostgresSink) IngestToPostgres(ctx context.Context, tableName string, s
 		return fmt.Errorf("failed to set SQL query: %w", err)
 	}
 
-	// Read records from the arrio.Reader and bind them to the statement
-	for {
-		record, err := reader.Read()
-		if err != nil {
-			if err == io.EOF {
-				break // End of stream
-			}
-			return fmt.Errorf("failed to read record: %w", err)
-		}
-		/*
-			r := array.RecordToStructArray(record)
+	// Wrap the record in a SingleRecordReader to implement the array.RecordReader interface
+	recordReader := NewSingleRecordReader(record)
 
-			// Bind the record set as a stream
-			if err := stmt.BindStream(ctx, arrio.NewRecordReader(r)); err != nil {
-				record.Release()
-				return fmt.Errorf("failed to bind stream: %w", err)
-			}
-		*/
-		// Execute the insert statement
-		if _, err := stmt.ExecuteUpdate(ctx); err != nil {
-			record.Release()
-			return fmt.Errorf("failed to execute update: %w", err)
-		}
-
+	// Bind the record set as a stream
+	if err := stmt.BindStream(ctx, recordReader); err != nil {
 		record.Release()
+		return fmt.Errorf("failed to bind stream: %w", err)
 	}
 
+	// Execute the insert statement
+	if _, err := stmt.ExecuteUpdate(ctx); err != nil {
+		record.Release()
+		return fmt.Errorf("failed to execute update: %w", err)
+	}
+
+	record.Release()
 	return nil
 }
 
-// Close closes the ADBC connection.
+// Close closes the ADBC connection associated with PostgresSink.
 func (p *PostgresSink) Close() error {
 	return p.conn.Close()
 }

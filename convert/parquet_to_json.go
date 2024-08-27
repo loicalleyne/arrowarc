@@ -34,18 +34,45 @@ import (
 	"fmt"
 
 	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/arrowarc/arrowarc/pkg/pipeline"
 )
 
 func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, includeStructs bool) error {
-	reader, err := filesystem.ReadParquetFileStream(ctx, parquetFilePath, memoryMap, chunkSize, columns, rowGroups, parallel)
-	if err != nil {
-		return fmt.Errorf("error while creating Parquet reader: %w", err)
+	// Validate input parameters
+	if parquetFilePath == "" {
+		return fmt.Errorf("parquet file path cannot be empty")
+	}
+	if jsonFilePath == "" {
+		return fmt.Errorf("JSON file path cannot be empty")
+	}
+	if chunkSize <= 0 {
+		return fmt.Errorf("chunk size must be greater than zero")
 	}
 
-	err = filesystem.WriteJSONFileStream(ctx, jsonFilePath, reader)
+	// Setup the reader
+	reader, err := filesystem.NewParquetReader(ctx, parquetFilePath, &filesystem.ParquetReadOptions{
+		MemoryMap: memoryMap,
+		RowGroups: rowGroups,
+		Parallel:  parallel,
+	})
 	if err != nil {
-		return fmt.Errorf("error while creating JSON writer: %w", err)
+		return fmt.Errorf("failed to create Parquet reader for file '%s': %w", parquetFilePath, err)
 	}
 
-	return err
+	// Setup the writer
+	writer, err := filesystem.NewJSONWriter(ctx, jsonFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create JSON writer for file '%s': %w", jsonFilePath, err)
+	}
+
+	// Setup the pipeline
+	p := pipeline.NewDataPipeline(reader, writer)
+
+	// Start the pipeline
+	err = p.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to convert Parquet to JSON: %w", err)
+	}
+
+	return nil
 }

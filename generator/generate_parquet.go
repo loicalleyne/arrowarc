@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package parquet
+package generator
 
 import (
 	"crypto/rand"

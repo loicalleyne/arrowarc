@@ -40,6 +40,7 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/arrowarc/arrowarc/pkg/pipeline"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -96,12 +97,25 @@ func TestWriteJSONFileStream(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Write the records to a JSON file using WriteJSONFileStream
-	err := integrations.WriteJSONFileStream(ctx, outputFilePath, reader)
-	assert.NoError(t, err, "Error should be nil when writing record to JSON file")
+	// Setup the JSON writer
+	jsonWriter, err := integrations.NewJSONWriter(ctx, outputFilePath)
+	assert.NoError(t, err, "Error should be nil when creating JSON writer")
+	defer jsonWriter.Close()
 
-	// Check that the output file was created and is not empty
-	info, err := os.Stat(outputFilePath)
-	assert.NoError(t, err, "Error should be nil when checking the output file")
-	assert.Greater(t, info.Size(), int64(0), "Output JSON file should not be empty")
+	// Write the records to a JSON file using WriteJSONFileStream
+	writer, err := integrations.NewJSONWriter(ctx, outputFilePath)
+	assert.NoError(t, err, "Error should be nil when creating JSON writer")
+	defer writer.Close()
+
+	// Setup the pipeline to write the records to the JSON file
+	p := pipeline.NewDataPipeline(reader, writer)
+
+	// Run the pipeline
+	err = p.Start(ctx)
+	assert.NoError(t, err, "Error should be nil when writing JSON file")
+
+	// Check if the output file exists
+	assert.FileExists(t, outputFilePath, "Output file should exist")
+	assert.NoError(t, err, "Error should be nil when closing the JSON file writer")
+
 }

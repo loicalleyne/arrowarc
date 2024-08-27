@@ -31,21 +31,76 @@ package convert
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
+	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/arrowarc/arrowarc/pkg/pipeline"
 )
 
-func ConvertCSVToParquet(ctx context.Context, csvFilePath, parquetFilePath string, schema *arrow.Schema, hasHeader bool, chunkSize int64, delimiter rune, nullValues []string, stringsCanBeNull bool) error {
-	reader, err := filesystem.NewCSVRecordReader(ctx, csvFilePath, schema, hasHeader, chunkSize, delimiter, nullValues, stringsCanBeNull)
-	if err != nil {
-		return fmt.Errorf("error while creating CSV reader: %w", err)
+func ConvertCSVToParquet(
+	ctx context.Context,
+	csvFilePath, parquetFilePath string,
+	schema *arrow.Schema,
+	hasHeader bool, chunkSize int64,
+	delimiter rune,
+	nullValues []string,
+	stringsCanBeNull bool,
+) error {
+
+	// Validate input parameters
+	if csvFilePath == "" {
+		return errors.New("CSV file path cannot be empty")
+	}
+	if parquetFilePath == "" {
+		return errors.New("Parquet file path cannot be empty")
+	}
+	if schema == nil {
+		return errors.New("schema cannot be nil")
+	}
+	if chunkSize <= 0 {
+		return errors.New("chunk size must be greater than zero")
+	}
+	if ctx == nil {
+		return errors.New("context cannot be nil")
 	}
 
-	err = filesystem.WriteParquetFileStream(ctx, parquetFilePath, reader, filesystem.NewDefaultParquetWriteOptions())
+	// Setup CSV reader
+	csvReader, err := integrations.NewCSVReader(ctx, csvFilePath, schema, &integrations.CSVReadOptions{
+		ChunkSize:        chunkSize,
+		Delimiter:        delimiter,
+		HasHeader:        hasHeader,
+		NullValues:       nullValues,
+		StringsCanBeNull: stringsCanBeNull,
+	})
 	if err != nil {
-		return fmt.Errorf("error while writing Parquet file: %w", err)
+		return fmt.Errorf("failed to create CSV reader for file '%s': %w", csvFilePath, err)
+	}
+	defer func() {
+		if cerr := csvReader.Close(); cerr != nil {
+			err = fmt.Errorf("failed to close CSV reader: %w", cerr)
+		}
+	}()
+
+	parquetWriterProps := integrations.NewDefaultParquetWriterProperties()
+
+	// Setup Parquet writer
+	parquetWriter, err := integrations.NewParquetWriter(parquetFilePath, schema, parquetWriterProps)
+	if err != nil {
+		return fmt.Errorf("failed to create Parquet writer for file '%s': %w", parquetFilePath, err)
+	}
+	defer func() {
+		if cerr := parquetWriter.Close(); cerr != nil {
+			err = fmt.Errorf("failed to close Parquet writer: %w", cerr)
+		}
+	}()
+
+	// Setup and start pipeline
+	p := pipeline.NewDataPipeline(csvReader, parquetWriter)
+	err = p.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to convert CSV to Parquet: %w", err)
 	}
 
 	return nil

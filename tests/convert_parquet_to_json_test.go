@@ -36,7 +36,7 @@ import (
 	"time"
 
 	converter "github.com/arrowarc/arrowarc/convert"
-	generator "github.com/arrowarc/arrowarc/pkg/parquet"
+	generator "github.com/arrowarc/arrowarc/generator"
 	"github.com/stretchr/testify/assert"
 )
 

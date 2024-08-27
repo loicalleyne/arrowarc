@@ -37,42 +37,73 @@ import (
 	"strings"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/csv"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	pool "github.com/arrowarc/arrowarc/internal/memory"
 )
 
-// CSVRecordReader implements arrio.Reader for reading records from CSV files.
-type CSVRecordReader struct {
+// CSVReader reads records from a CSV file and implements the Reader interface.
+type CSVReader struct {
 	reader *csv.Reader
 	file   *os.File
 	schema *arrow.Schema
+	alloc  memory.Allocator
 }
 
-// NewCSVRecordReader creates a new reader for reading records from a CSV file.
-func NewCSVRecordReader(ctx context.Context, filePath string, schema *arrow.Schema, hasHeader bool, chunkSize int64, delimiter rune, nullValues []string, stringsCanBeNull bool) (arrio.Reader, error) {
+// CSVWriter writes records to a CSV file and implements the Writer interface.
+type CSVWriter struct {
+	writer *csv.Writer
+	file   *os.File
+	alloc  memory.Allocator
+}
+
+// CSVReadOptions defines options for reading CSV files.
+type CSVReadOptions struct {
+	ChunkSize        int64
+	Delimiter        rune
+	HasHeader        bool
+	NullValues       []string
+	StringsCanBeNull bool
+}
+
+// CSVWriteOptions defines options for writing CSV files.
+type CSVWriteOptions struct {
+	Delimiter       rune
+	IncludeHeader   bool
+	NullValue       string
+	StringsReplacer *strings.Replacer
+	BoolFormatter   func(bool) string
+}
+
+// NewCSVReader creates a new CSV reader for reading records from a CSV file.
+func NewCSVReader(ctx context.Context, filePath string, schema *arrow.Schema, opts *CSVReadOptions) (*CSVReader, error) {
+	alloc := pool.GetAllocator()
+
 	file, err := os.Open(filePath)
 	if err != nil {
+		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to open CSV file: %w", err)
 	}
 
 	options := []csv.Option{
-		csv.WithChunk(int(chunkSize)),
-		csv.WithComma(delimiter),
-		csv.WithHeader(hasHeader),
-		csv.WithNullReader(stringsCanBeNull, nullValues...),
+		csv.WithChunk(int(opts.ChunkSize)),
+		csv.WithComma(opts.Delimiter),
+		csv.WithHeader(opts.HasHeader),
+		csv.WithNullReader(opts.StringsCanBeNull, opts.NullValues...),
 	}
 
 	reader := csv.NewReader(file, schema, options...)
 
-	return &CSVRecordReader{
+	return &CSVReader{
 		reader: reader,
 		file:   file,
 		schema: schema,
+		alloc:  alloc,
 	}, nil
 }
 
 // Read reads the next record from the CSV file.
-func (r *CSVRecordReader) Read() (arrow.Record, error) {
+func (r *CSVReader) Read() (arrow.Record, error) {
 	if !r.reader.Next() {
 		if err := r.reader.Err(); err != nil && err != io.EOF {
 			return nil, fmt.Errorf("error reading CSV record: %w", err)
@@ -90,52 +121,51 @@ func (r *CSVRecordReader) Read() (arrow.Record, error) {
 }
 
 // Schema returns the schema of the records being read from the CSV file.
-func (r *CSVRecordReader) Schema() *arrow.Schema {
+func (r *CSVReader) Schema() *arrow.Schema {
 	return r.schema
 }
 
 // Close releases resources associated with the CSV reader.
-func (r *CSVRecordReader) Close() error {
+func (r *CSVReader) Close() error {
+	defer pool.PutAllocator(r.alloc)
 	if r.reader != nil {
 		r.reader.Release()
 	}
 	return r.file.Close()
 }
 
-// CSVRecordWriter implements arrio.Writer for writing records to CSV files.
-type CSVRecordWriter struct {
-	writer *csv.Writer
-	file   *os.File
-}
+// NewCSVWriter creates a new CSV writer for writing records to a CSV file.
+func NewCSVWriter(ctx context.Context, filePath string, schema *arrow.Schema, opts *CSVWriteOptions) (*CSVWriter, error) {
+	alloc := pool.GetAllocator()
 
-// NewCSVRecordWriter creates a new writer for writing records to a CSV file.
-func NewCSVRecordWriter(ctx context.Context, filePath string, schema *arrow.Schema, delimiter rune, includeHeader bool, nullValue string, stringsReplacer *strings.Replacer, boolFormatter func(bool) string) (arrio.Writer, error) {
 	file, err := os.Create(filePath)
 	if err != nil {
+		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to create CSV file: %w", err)
 	}
 
 	// Initialize a no-op strings.Replacer if nil
-	if stringsReplacer == nil {
-		stringsReplacer = strings.NewReplacer()
+	if opts.StringsReplacer == nil {
+		opts.StringsReplacer = strings.NewReplacer()
 	}
 
 	writer := csv.NewWriter(file, schema,
-		csv.WithComma(delimiter),
-		csv.WithHeader(includeHeader),
-		csv.WithNullWriter(nullValue),
-		csv.WithStringsReplacer(stringsReplacer),
-		csv.WithBoolWriter(boolFormatter),
+		csv.WithComma(opts.Delimiter),
+		csv.WithHeader(opts.IncludeHeader),
+		csv.WithNullWriter(opts.NullValue),
+		csv.WithStringsReplacer(opts.StringsReplacer),
+		csv.WithBoolWriter(opts.BoolFormatter),
 	)
 
-	return &CSVRecordWriter{
+	return &CSVWriter{
 		writer: writer,
 		file:   file,
+		alloc:  alloc,
 	}, nil
 }
 
 // Write writes a record to the CSV file.
-func (w *CSVRecordWriter) Write(record arrow.Record) error {
+func (w *CSVWriter) Write(record arrow.Record) error {
 	if err := w.writer.Write(record); err != nil {
 		return fmt.Errorf("failed to write record to CSV: %w", err)
 	}
@@ -148,7 +178,8 @@ func (w *CSVRecordWriter) Write(record arrow.Record) error {
 }
 
 // Close flushes and closes the CSV writer.
-func (w *CSVRecordWriter) Close() error {
+func (w *CSVWriter) Close() error {
+	defer pool.PutAllocator(w.alloc)
 	if w.writer != nil {
 		w.writer.Flush()
 	}
