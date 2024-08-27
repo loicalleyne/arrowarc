@@ -8,8 +8,8 @@ require (
 	github.com/apache/arrow-adbc/go/adbc v1.1.0
 	github.com/apache/arrow/go/v17 v17.0.0
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
-	github.com/fergusstrange/embedded-postgres v1.28.0
-	github.com/go-faker/faker/v4 v4.4.2
+	github.com/fergusstrange/embedded-postgres v1.29.0
+	github.com/go-faker/faker/v4 v4.5.0
 	github.com/goccy/go-json v0.10.3
 	github.com/golang/protobuf v1.5.4
 	github.com/google/flatbuffers v24.3.25+incompatible
@@ -18,7 +18,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/oauth2 v0.22.0
-	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028
+	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9
 	google.golang.org/api v0.194.0
 	google.golang.org/grpc v1.65.0
 	google.golang.org/protobuf v1.34.2
