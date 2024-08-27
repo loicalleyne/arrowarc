@@ -31,6 +31,7 @@ package pipeline
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"sync"
@@ -43,6 +44,7 @@ import (
 // Metrics stores pipeline processing metrics
 type Metrics struct {
 	RecordsProcessed int
+	TotalBytes       int64
 	StartTime        time.Time
 	EndTime          time.Time
 }
@@ -52,10 +54,15 @@ func (m *Metrics) Duration() time.Duration {
 	return m.EndTime.Sub(m.StartTime)
 }
 
-// Report logs the collected metrics
-func (m *Metrics) Report() {
-	log.Printf("Records Processed: %d", m.RecordsProcessed)
-	log.Printf("Total Duration: %v", m.Duration())
+// Report generates a summary of the collected metrics
+func (m *Metrics) Report() string {
+	return fmt.Sprintf("Records Processed: %d\nTotal Bytes: %d\nTotal Duration: %v\nThroughput (records/second): %f\nThroughput (bytes/second): %f",
+		m.RecordsProcessed,
+		m.TotalBytes,
+		m.Duration(),
+		float64(m.RecordsProcessed)/m.Duration().Seconds(),
+		float64(m.TotalBytes)/m.Duration().Seconds(),
+	)
 }
 
 // DataPipeline defines the structure for a data processing pipeline
@@ -78,8 +85,8 @@ func NewDataPipeline(reader interfaces.Reader, writer interfaces.Writer) *DataPi
 	}
 }
 
-// Start begins the pipeline processing
-func (dp *DataPipeline) Start(ctx context.Context) error {
+// Start begins the pipeline processing and returns the metrics report
+func (dp *DataPipeline) Start(ctx context.Context) (*Metrics, error) {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -100,18 +107,18 @@ func (dp *DataPipeline) Start(ctx context.Context) error {
 		wg.Wait()
 		close(dp.errCh)
 		dp.metrics.EndTime = time.Now()
-		dp.metrics.Report() // Report the metrics once processing is complete
 	}()
 
 	// Listen for errors
 	for err := range dp.errCh {
 		if err != nil {
 			cancel() // Cancel the context to stop all operations
-			return err
+			return nil, err
 		}
 	}
 
-	return nil
+	// Return the collected metrics
+	return dp.metrics, nil
 }
 
 // startReader reads records from the reader and sends them to the channel
@@ -138,6 +145,7 @@ func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, w
 
 			// Update metrics
 			dp.metrics.RecordsProcessed++
+			dp.metrics.TotalBytes += int64(record.Schema().Metadata().FindKey("size"))
 
 			select {
 			case ch <- record:

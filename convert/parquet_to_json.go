@@ -66,13 +66,11 @@ func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath str
 	}
 
 	// Setup the pipeline
-	p := pipeline.NewDataPipeline(reader, writer)
-
-	// Start the pipeline
-	err = p.Start(ctx)
+	metrics, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to convert Parquet to JSON: %w", err)
 	}
 
+	fmt.Println(metrics)
 	return nil
 }
