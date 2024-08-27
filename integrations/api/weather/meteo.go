@@ -32,28 +32,33 @@ package integrations
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 
+	"github.com/goccy/go-json"
+
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 	config "github.com/arrowarc/arrowarc/pkg/common/config"
 )
 
-// WeatherAPIReader implements arrio.Reader for reading weather data from an API.
-type WeatherAPIReader struct {
+// WeatherReader reads weather data from an API and implements the Reader interface.
+type WeatherReader struct {
 	ctx      context.Context
 	cities   []config.City
 	client   *http.Client
 	schema   *arrow.Schema
 	currCity int
+	alloc    memory.Allocator
 }
 
-// NewWeatherAPIReader creates a new reader for reading weather data from a list of cities.
-func NewWeatherAPIReader(ctx context.Context, cities []config.City, client *http.Client) (arrio.Reader, error) {
+// NewWeatherReader creates a new reader for reading weather data from a list of cities.
+func NewWeatherReader(ctx context.Context, cities []config.City, client *http.Client) (*WeatherReader, error) {
+	alloc := memoryPool.GetAllocator()
+
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "city", Type: arrow.BinaryTypes.String},
 		{Name: "latitude", Type: arrow.PrimitiveTypes.Float64},
@@ -65,22 +70,23 @@ func NewWeatherAPIReader(ctx context.Context, cities []config.City, client *http
 		client = http.DefaultClient
 	}
 
-	return &WeatherAPIReader{
+	return &WeatherReader{
 		ctx:      ctx,
 		cities:   cities,
 		client:   client,
 		schema:   schema,
 		currCity: 0,
+		alloc:    alloc,
 	}, nil
 }
 
 // Schema returns the schema of the records being read from the Weather API.
-func (r *WeatherAPIReader) Schema() *arrow.Schema {
+func (r *WeatherReader) Schema() *arrow.Schema {
 	return r.schema
 }
 
 // Read reads the next record of weather data from the API.
-func (r *WeatherAPIReader) Read() (arrow.Record, error) {
+func (r *WeatherReader) Read() (arrow.Record, error) {
 	if r.currCity >= len(r.cities) {
 		return nil, io.EOF
 	}
@@ -117,9 +123,10 @@ func (r *WeatherAPIReader) Read() (arrow.Record, error) {
 	return nil, io.EOF
 }
 
-// Close releases any resources associated with the WeatherAPIReader.
-func (r *WeatherAPIReader) Close() error {
-	// Add any cleanup logic if needed
+// Close releases any resources associated with the WeatherReader.
+func (r *WeatherReader) Close() error {
+	defer memoryPool.PutAllocator(r.alloc)
+	// Additional cleanup logic if needed
 	return nil
 }
 
