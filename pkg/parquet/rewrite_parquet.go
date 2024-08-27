@@ -90,7 +90,12 @@ func RewriteParquetFile(
 	defer writer.Close()
 
 	// Create and start the data pipeline
-	_ = pipeline.NewDataPipeline(reader, writer).Start(ctx)
+	metrics, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to rewrite Parquet file: %w", err)
+	}
+
+	fmt.Println(metrics.Report())
 
 	return nil
 }

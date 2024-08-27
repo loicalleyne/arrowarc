@@ -97,11 +97,12 @@ func ConvertCSVToParquet(
 	}()
 
 	// Setup and start pipeline
-	p := pipeline.NewDataPipeline(csvReader, parquetWriter)
-	err = p.Start(ctx)
+	metrics, err := pipeline.NewDataPipeline(csvReader, parquetWriter).Start(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to convert CSV to Parquet: %w", err)
 	}
+
+	fmt.Println(metrics.Report())
 
 	return nil
 }

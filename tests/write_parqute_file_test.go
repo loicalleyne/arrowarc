@@ -102,11 +102,12 @@ func TestWriteParquetFileStream(t *testing.T) {
 			require.NoError(t, err, "Error should be nil when creating Parquet writer")
 
 			// Setup the pipeline to write the records to the Parquet file
-			p := pipeline.NewDataPipeline(reader, writer)
-			err = p.Start(ctx)
-			require.NoError(t, err, "Error should be nil when running the pipeline")
+			metrics, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+			require.NoError(t, err, "Error should be nil when starting data pipeline")
+			require.NotNil(t, metrics, "Metrics should not be nil")
 
-			// Check if the output file exists and has content
+			// Print the metrics report
+			t.Log(metrics.Report())
 
 			t.Cleanup(func() {
 				os.Remove(test.outputFilePath)

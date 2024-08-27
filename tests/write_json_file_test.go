@@ -108,14 +108,15 @@ func TestWriteJSONFileStream(t *testing.T) {
 	defer writer.Close()
 
 	// Setup the pipeline to write the records to the JSON file
-	p := pipeline.NewDataPipeline(reader, writer)
-
-	// Run the pipeline
-	err = p.Start(ctx)
-	assert.NoError(t, err, "Error should be nil when writing JSON file")
+	metrics, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+	assert.NoError(t, err, "Error should be nil when running the pipeline")
+	assert.NotNil(t, metrics)
 
 	// Check if the output file exists
 	assert.FileExists(t, outputFilePath, "Output file should exist")
 	assert.NoError(t, err, "Error should be nil when closing the JSON file writer")
+
+	// Print the metrics report
+	t.Log(metrics.Report())
 
 }
