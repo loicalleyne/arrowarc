@@ -39,6 +39,7 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 )
 
 // SchemaReader is an interface that extends arrio.Reader to include a Schema method.
@@ -56,22 +57,29 @@ type SchemaWriter interface {
 // IPCRecordReader implements SchemaReader for reading records from IPC files.
 type IPCRecordReader struct {
 	reader *ipc.Reader
+	file   *os.File
+	alloc  memory.Allocator
 }
 
 // NewIPCRecordReader creates a new reader for reading records from an IPC file.
 func NewIPCRecordReader(ctx context.Context, filePath string) (SchemaReader, error) {
-	f, err := os.Open(filePath)
+	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open IPC file: %w", err)
 	}
 
-	reader, err := ipc.NewReader(f)
+	alloc := memoryPool.GetAllocator()
+
+	opts := []ipc.Option{ipc.WithAllocator(alloc)}
+
+	reader, err := ipc.NewReader(file, opts...)
 	if err != nil {
-		f.Close()
+		file.Close()
+		memoryPool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to create IPC reader: %w", err)
 	}
 
-	return &IPCRecordReader{reader: reader}, nil
+	return &IPCRecordReader{reader: reader, file: file, alloc: alloc}, nil
 }
 
 // Read reads the next record from the IPC file.
@@ -95,29 +103,34 @@ func (r *IPCRecordReader) Schema() *arrow.Schema {
 
 // Close releases resources associated with the IPC reader.
 func (r *IPCRecordReader) Close() error {
+	defer memoryPool.PutAllocator(r.alloc)
 	if r.reader != nil {
 		r.reader.Release()
 	}
-	return nil
+	return r.file.Close()
 }
 
 // IPCRecordWriter implements SchemaWriter for writing records to IPC files.
 type IPCRecordWriter struct {
 	writer *ipc.Writer
+	file   *os.File
 	schema *arrow.Schema
+	alloc  memory.Allocator
 }
 
 // NewIPCRecordWriter creates a new writer for writing records to an IPC file.
 func NewIPCRecordWriter(ctx context.Context, filePath string, schema *arrow.Schema) (SchemaWriter, error) {
-	f, err := os.Create(filePath)
+	file, err := os.Create(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("could not create IPC file: %w", err)
 	}
 
-	mem := memory.NewGoAllocator()
-	writer := ipc.NewWriter(f, ipc.WithAllocator(mem), ipc.WithSchema(schema))
+	alloc := memoryPool.GetAllocator()
+	opts := []ipc.Option{ipc.WithSchema(schema), ipc.WithAllocator(alloc), ipc.WithCompressConcurrency(2), ipc.WithZstd()}
 
-	return &IPCRecordWriter{writer: writer, schema: schema}, nil
+	writer := ipc.NewWriter(file, opts...)
+
+	return &IPCRecordWriter{writer: writer, file: file, alloc: alloc, schema: schema}, nil
 }
 
 // Write writes a record to the IPC file.
@@ -130,10 +143,13 @@ func (w *IPCRecordWriter) Write(record arrow.Record) error {
 
 // Close closes the IPC writer.
 func (w *IPCRecordWriter) Close() error {
+	defer memoryPool.PutAllocator(w.alloc)
 	if w.writer != nil {
-		return w.writer.Close()
+		if err := w.writer.Close(); err != nil {
+			return fmt.Errorf("failed to close IPC writer: %w", err)
+		}
 	}
-	return nil
+	return w.file.Close()
 }
 
 // Schema returns the schema of the records being written to the IPC file.
