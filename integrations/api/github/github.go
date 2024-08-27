@@ -37,24 +37,32 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/memory"
+	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 	"github.com/google/go-github/v64/github"
 	"golang.org/x/oauth2"
 )
 
-// GitHubAPIReader implements arrio.Reader for reading GitHub repository data.
-type GitHubAPIReader struct {
+// GitHubReader reads GitHub repository data and implements the Reader interface.
+type GitHubReader struct {
 	repos        []string
 	client       *github.Client
-	allocator    memory.Allocator
 	schema       *arrow.Schema
 	currentIndex int
+	alloc        memory.Allocator
 }
 
-// NewGitHubAPIReader creates a new reader for reading GitHub repository data.
-func NewGitHubAPIReader(repos []string, client *github.Client) arrio.Reader {
-	allocator := memory.NewGoAllocator()
+// ReadOptions defines options for reading GitHub repository data.
+type GitHubReadOptions struct {
+	Repos []string
+	Token string
+}
+
+// NewGitHubReader creates a new GitHub reader for fetching repository data.
+func NewGitHubReader(ctx context.Context, opts *GitHubReadOptions) (*GitHubReader, error) {
+	alloc := memoryPool.GetAllocator()
+
+	client := NewGitHubClient(ctx, opts.Token)
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "name", Type: arrow.BinaryTypes.String},
 		{Name: "owner", Type: arrow.BinaryTypes.String},
@@ -64,22 +72,17 @@ func NewGitHubAPIReader(repos []string, client *github.Client) arrio.Reader {
 		{Name: "language", Type: arrow.BinaryTypes.String},
 	}, nil)
 
-	return &GitHubAPIReader{
-		repos:        repos,
+	return &GitHubReader{
+		repos:        opts.Repos,
 		client:       client,
-		allocator:    allocator,
 		schema:       schema,
 		currentIndex: 0,
-	}
-}
-
-// Schema returns the schema of the records being read from GitHub API.
-func (r *GitHubAPIReader) Schema() *arrow.Schema {
-	return r.schema
+		alloc:        alloc,
+	}, nil
 }
 
 // Read reads the next record of GitHub repository data.
-func (r *GitHubAPIReader) Read() (arrow.Record, error) {
+func (r *GitHubReader) Read() (arrow.Record, error) {
 	if r.currentIndex >= len(r.repos) {
 		return nil, io.EOF
 	}
@@ -92,7 +95,7 @@ func (r *GitHubAPIReader) Read() (arrow.Record, error) {
 		return nil, fmt.Errorf("error fetching GitHub repo data: %w", err)
 	}
 
-	b := array.NewRecordBuilder(r.allocator, r.schema)
+	b := array.NewRecordBuilder(r.alloc, r.schema)
 	defer b.Release()
 
 	b.Field(0).(*array.StringBuilder).Append(repoInfo.GetName())
@@ -106,10 +109,16 @@ func (r *GitHubAPIReader) Read() (arrow.Record, error) {
 	return record, nil
 }
 
-// Close releases any resources associated with the GitHubAPIReader.
-func (r *GitHubAPIReader) Close() error {
-	// No resources to release in this implementation
+// Close releases resources associated with the GitHubReader.
+func (r *GitHubReader) Close() error {
+	defer memoryPool.PutAllocator(r.alloc)
+	// Additional cleanup if needed
 	return nil
+}
+
+// Schema returns the schema of the records being read from GitHub API.
+func (r *GitHubReader) Schema() *arrow.Schema {
+	return r.schema
 }
 
 // fetchGitHubRepoData retrieves data for a GitHub repository.
