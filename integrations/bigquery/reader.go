@@ -100,7 +100,7 @@ func defaultBigQueryReadCallOptions() *BigQueryReadCallOptions {
 	}
 }
 
-func (bq *BigQueryReadClient) NewBigQueryArrowReader(ctx context.Context, projectID, datasetID, tableID string) (*BigQueryArrowReader, error) {
+func (bq *BigQueryReadClient) NewBigQueryReader(ctx context.Context, projectID, datasetID, tableID string) (*BigQueryReader, error) {
 	req := &storagepb.CreateReadSessionRequest{
 		Parent: fmt.Sprintf("projects/%s", projectID),
 		ReadSession: &storagepb.ReadSession{
@@ -121,7 +121,7 @@ func (bq *BigQueryReadClient) NewBigQueryArrowReader(ctx context.Context, projec
 
 	alloc := memoryPool.GetAllocator()
 
-	return &BigQueryArrowReader{
+	return &BigQueryReader{
 		ctx:         ctx,
 		client:      bq.client,
 		callOptions: bq.callOptions,
@@ -132,7 +132,7 @@ func (bq *BigQueryReadClient) NewBigQueryArrowReader(ctx context.Context, projec
 	}, nil
 }
 
-type BigQueryArrowReader struct {
+type BigQueryReader struct {
 	ctx         context.Context
 	client      *bqStorage.BigQueryReadClient
 	callOptions *BigQueryReadCallOptions
@@ -146,18 +146,18 @@ type BigQueryArrowReader struct {
 	once      sync.Once
 }
 
-func (r *BigQueryArrowReader) Read() (arrow.Record, error) {
+func (r *BigQueryReader) Read() (arrow.Record, error) {
 	var err error
 	r.once.Do(func() {
 		r.buf.Write(r.schemaBytes)
 		r.r, err = ipc.NewReader(r.buf, ipc.WithAllocator(r.mem))
+		if err != nil {
+			return
+		}
 	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize IPC reader: %w", err)
-	}
 
 	for r.streamIdx < len(r.streams) {
-		if r.r.Next() {
+		if r.r != nil && r.r.Next() {
 			return r.r.Record(), nil
 		}
 
@@ -186,12 +186,16 @@ func (r *BigQueryArrowReader) Read() (arrow.Record, error) {
 
 		undecodedBatch := response.GetArrowRecordBatch().GetSerializedRecordBatch()
 		if len(undecodedBatch) > 0 {
-			r.buf.Reset()
+			r.buf = bytes.NewBuffer(r.schemaBytes)
 			r.buf.Write(undecodedBatch)
 
 			r.r, err = ipc.NewReader(r.buf, ipc.WithAllocator(r.mem), ipc.WithSchema(r.r.Schema()))
 			if err != nil {
 				return nil, fmt.Errorf("failed to create IPC reader for batch: %w", err)
+			}
+
+			if r.r.Next() {
+				return r.r.Record(), nil
 			}
 		}
 	}
@@ -199,7 +203,7 @@ func (r *BigQueryArrowReader) Read() (arrow.Record, error) {
 	return nil, io.EOF
 }
 
-func (r *BigQueryArrowReader) Close() error {
+func (r *BigQueryReader) Close() error {
 	defer memoryPool.PutAllocator(r.mem)
 	if r.r != nil {
 		r.r.Release()
@@ -207,6 +211,6 @@ func (r *BigQueryArrowReader) Close() error {
 	return nil
 }
 
-func (r *BigQueryArrowReader) Schema() *arrow.Schema {
+func (r *BigQueryReader) Schema() *arrow.Schema {
 	return r.r.Schema()
 }

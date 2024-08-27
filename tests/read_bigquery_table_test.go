@@ -79,7 +79,7 @@ func TestReadBigQueryStream(t *testing.T) {
 			bq, err := bigquery.NewBigQueryReadClient(ctx)
 			assert.NoError(t, err, "Error should be nil when creating BigQuery connector")
 
-			reader, err := bq.NewBigQueryArrowReader(ctx, test.projectID, test.datasetID, test.tableID)
+			reader, err := bq.NewBigQueryReader(ctx, test.projectID, test.datasetID, test.tableID)
 			assert.NoError(t, err, "Error should be nil when creating BigQuery Arrow reader")
 
 			var recordsRead int

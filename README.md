@@ -36,12 +36,12 @@ Here’s a quick example of setting up a pipeline in ArrowArc to transport data 
 ctx := context.Background()
 
 // Setup the BigQuery client and reader
-bq, err := bigquery.NewBigQueryReadClient(ctx)
+bq, err := integrations.NewBigQueryReadClient(ctx)
 reader, err := bq.NewBigQueryArrowReader(ctx, projectID, datasetID, tableID)
 
 // Setup the DuckDB client and writer
-conn, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)
-writer, err := integrations.NewDuckDBRecordWriter(ctx, conn, "test_table")
+duck, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)
+writer, err := integrations.NewDuckDBRecordWriter(ctx, duck, tableID)
 
 // Create and start the data pipeline
 p := pipeline.NewDataPipeline(reader, writer).Start(ctx)
