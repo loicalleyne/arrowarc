@@ -78,7 +78,15 @@ func TestGitHubRepoAPIStream(t *testing.T) {
 			defer cancel()
 
 			client := github.NewGitHubClient(ctx, githubToken)
-			reader := github.NewGitHubAPIReader(test.repos, client)
+			assert.NotNil(t, client, "GitHub client should not be nil")
+
+			reader, err := github.NewGitHubReader(ctx, &github.GitHubReadOptions{
+				Repos: test.repos,
+				Token: githubToken,
+			})
+			assert.NoError(t, err, "Error should be nil when creating GitHub API reader")
+
+			// Read records from the GitHub API
 
 			var recordsRead int
 			for {
