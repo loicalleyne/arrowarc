@@ -37,7 +37,7 @@ import (
 
 	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pkg/pipeline"
+	"github.com/arrowarc/arrowarc/pipeline"
 )
 
 func ConvertParquetToCSV(

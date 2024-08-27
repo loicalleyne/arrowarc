@@ -37,7 +37,7 @@ import (
 
 	generator "github.com/arrowarc/arrowarc/generator"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
-	pipeline "github.com/arrowarc/arrowarc/pkg/pipeline"
+	pipeline "github.com/arrowarc/arrowarc/pipeline"
 	"github.com/stretchr/testify/require"
 )
 

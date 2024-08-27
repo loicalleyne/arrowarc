@@ -37,7 +37,7 @@ ctx := context.Background()
 
 // Setup the BigQuery client and reader
 bq, err := integrations.NewBigQueryReadClient(ctx)
-reader, err := bq.NewBigQueryArrowReader(ctx, projectID, datasetID, tableID)
+reader, err := bq.NewBigQueryReader(ctx, projectID, datasetID, tableID)
 
 // Setup the DuckDB client and writer
 duck, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)

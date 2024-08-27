@@ -36,7 +36,7 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pkg/pipeline"
+	"github.com/arrowarc/arrowarc/pipeline"
 )
 
 func ConvertCSVToParquet(
@@ -54,7 +54,7 @@ func ConvertCSVToParquet(
 		return errors.New("CSV file path cannot be empty")
 	}
 	if parquetFilePath == "" {
-		return errors.New("Parquet file path cannot be empty")
+		return errors.New("parquet file path cannot be empty")
 	}
 	if schema == nil {
 		return errors.New("schema cannot be nil")
