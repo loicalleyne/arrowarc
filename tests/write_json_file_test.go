@@ -40,7 +40,7 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pkg/pipeline"
+	"github.com/arrowarc/arrowarc/pipeline"
 	"github.com/stretchr/testify/assert"
 )
 

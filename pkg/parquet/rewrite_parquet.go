@@ -36,7 +36,7 @@ import (
 
 	"github.com/apache/arrow/go/v17/parquet"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pkg/pipeline"
+	"github.com/arrowarc/arrowarc/pipeline"
 )
 
 func RewriteParquetFile(

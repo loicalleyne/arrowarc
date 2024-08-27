@@ -34,7 +34,7 @@ import (
 	"fmt"
 
 	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pkg/pipeline"
+	"github.com/arrowarc/arrowarc/pipeline"
 )
 
 func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, includeStructs bool) error {
