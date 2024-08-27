@@ -110,7 +110,7 @@ func TestWriteArrowRecordsToBigQuery(t *testing.T) {
 			readClient, err := bigquery.NewBigQueryReadClient(ctx)
 			assert.NoError(t, err, "Error should be nil when creating BigQuery read client")
 
-			recordReader, err := readClient.NewBigQueryArrowReader(ctx, projectID, datasetID, tableID)
+			recordReader, err := readClient.NewBigQueryReader(ctx, projectID, datasetID, tableID)
 			assert.NoError(t, err, "Error should be nil when creating BigQuery Arrow reader")
 
 			var recordsRead int
