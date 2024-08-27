@@ -125,24 +125,30 @@ We welcome all [contributions](./CONTRIBUTING.md). Please see the [Code of Condu
 
 Please see the [LICENSE](./LICENSE) for more details.
 
-## Technical Deep Dive
+## High-Performance Data Exchange: Engineering Deep Dive
 
-ArrowArc is engineered to maximize data processing speed by leveraging the capabilities of Apache Arrow, a columnar in-memory data format that enables efficient analytics and data exchange. At its core, ArrowArc takes full advantage of Apache Arrow’s design principles, such as zero-copy reads and efficient serialization, to achieve high-performance data processing across various systems.
+ArrowArc's architecture is meticulously crafted to optimize data exchange performance by combining the unique strengths of Apache Arrow's columnar format with the efficient serialization capabilities of FlatBuffers. This technical synergy is at the heart of ArrowArc's ability to maintain a lean and responsive data pipeline, effectively mitigating common performance bottlenecks such as intermediate data conversions, redundant copying, and format mismatches.
 
-### Leveraging Apache Arrow
+### Apache Arrow’s Columnar Format
 
-Apache Arrow is the backbone of ArrowArc, providing a standardized format for representing complex data structures in memory. Arrow's columnar layout is designed to optimize access patterns for modern CPUs, enabling efficient operations like filtering, aggregation, and vectorized processing. In ArrowArc, Arrow's in-memory format is used extensively to facilitate high-throughput data exchanges between different systems, such as databases, cloud storage, and file formats like Parquet and Avro.
+At its core, Apache Arrow uses a columnar memory layout that is designed to maximize CPU cache efficiency and enable SIMD (Single Instruction, Multiple Data) operations, which are critical for high-performance data processing. Unlike row-based formats, Arrow stores data in contiguous memory blocks, allowing ArrowArc to efficiently access, filter, and aggregate large datasets with minimal cache misses. This format is particularly advantageous for analytical workloads that involve large-scale scans and transformations, as it minimizes the overhead associated with fetching and processing data.
 
-ArrowArc employs Arrow’s IPC (Inter-Process Communication) mechanisms for moving data between components. This allows ArrowArc to maintain the data in its native columnar format throughout the pipeline, reducing the overhead of data serialization and deserialization. The result is a significant reduction in CPU and memory usage, which is crucial for achieving the high performance that ArrowArc targets.
+ArrowArc leverages this columnar format to keep data in its most optimal state throughout the entire pipeline. Whether data is being ingested from an external source like BigQuery or written to a storage system like DuckDB, ArrowArc avoids unnecessary conversions by preserving the Arrow format. This approach not only reduces the computational load but also minimizes memory allocations and deallocations, which can significantly impact performance in high-throughput systems.
 
-### The Role of FlatBuffers in ArrowArc
+### FlatBuffers’ Efficient Serialization
 
-FlatBuffers play a critical role in the high-performance nature of Apache Arrow, and by extension, ArrowArc. FlatBuffers are a memory-efficient serialization library developed by Google, designed to provide fast access to serialized data without requiring unpacking or extra copying. Arrow uses FlatBuffers to define its metadata, such as schema and record batch structures, allowing for rapid data exchange between systems.
+FlatBuffers, developed by Google, is a cross-platform serialization library that allows for zero-copy deserialization. This means that data serialized with FlatBuffers can be accessed directly in its serialized form without the need for unpacking or copying, which is a common source of latency in data processing systems.
 
-In ArrowArc, FlatBuffers are leveraged indirectly through Arrow’s data structures. When data is moved through an ArrowArc pipeline, the metadata—structured with FlatBuffers—enables quick interpretation and manipulation of the data without unnecessary memory overhead. This integration of Arrow and FlatBuffers ensures that ArrowArc can handle large volumes of data with minimal latency, making it well-suited for scenarios where data needs to be streamed or processed in real-time.
+In ArrowArc, FlatBuffers is indirectly utilized through Apache Arrow’s metadata structures. Arrow uses FlatBuffers to define its schemas, record batches, and other metadata, which are essential for interpreting and manipulating data within the pipeline. By employing FlatBuffers, ArrowArc can quickly interpret and utilize this metadata, ensuring that data remains in its columnar format without the overhead of traditional serialization/deserialization processes. This is particularly beneficial when data needs to be exchanged between different components of the pipeline, as it allows ArrowArc to maintain a high degree of efficiency and speed.
 
-### High-Performance Data Exchange
+### Minimizing Data Transformation Overhead
 
-The combination of Apache Arrow’s columnar format and FlatBuffers' efficient serialization allows ArrowArc to excel in scenarios where data must be exchanged between different storage formats and computing environments. ArrowArc pipelines are designed to minimize the bottlenecks typically associated with data processing, such as the need for intermediate conversions or data copying.
+A key design principle of ArrowArc is the minimization of data transformation overhead. Traditional data pipelines often require data to be serialized, deserialized, and converted between different formats as it moves between stages of the pipeline. Each of these steps introduces latency, consumes CPU cycles, and increases the risk of bottlenecks, especially when dealing with large volumes of data.
 
-For example, when streaming data from BigQuery to DuckDB, ArrowArc maintains the data in Arrow's format as much as possible, reducing the need for transformations that could introduce latency. This direct approach to data handling ensures that the data pipeline remains as lightweight and efficient as possible, allowing for near real-time processing even with large datasets.
+ArrowArc circumvents these issues by keeping data in its native Arrow format as much as possible. For example, when streaming data from BigQuery to DuckDB, ArrowArc ensures that the data remains in Arrow’s columnar format throughout the process. By doing so, ArrowArc eliminates the need for intermediate conversions that could introduce delays, ensuring that the pipeline remains streamlined and efficient.
+
+### Achieving Near-Real-Time Performance
+
+The combination of Apache Arrow’s efficient in-memory format and FlatBuffers’ lightweight serialization allows ArrowArc to achieve near-real-time performance, even when processing large datasets. By minimizing unnecessary data transformations and leveraging highly efficient data structures, ArrowArc is capable of sustaining high throughput with low latency.
+
+In practical terms, this means that ArrowArc can handle data streaming and transformation tasks that would typically require more complex and resource-intensive systems. Whether the task involves moving data from cloud storage, processing it in an on-premises database, or writing it to various file formats, ArrowArc is designed to handle these operations with minimal overhead, making it a powerful tool for engineers looking to push the limits of modern data processing.
