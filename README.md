@@ -40,6 +40,7 @@ bq, err := bigquery.NewBigQueryReadClient(ctx)
 reader, err := bq.NewBigQueryArrowReader(ctx, projectID, datasetID, tableID)
 
 // Setup the DuckDB client and writer
+conn, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)
 writer, err := integrations.NewDuckDBRecordWriter(ctx, conn, "test_table")
 
 // Create the data pipeline
@@ -90,7 +91,7 @@ I’m actively working on adding new features and integrations. Here’s where t
 | **Snowflake**   | ❌         | ❌        |
 | **DuckDB**      | ✅         | ✅        |
 | **SQLite**      | ❌         | ❌        |
-| **Spanner**     | ❌         | ❌        |
+| **Spanner**     | ✅         | ❌        |
 | **CockroachDB** | ✅         | 🚧        |
 | **Flight**      | ❌         | ❌        |
 
