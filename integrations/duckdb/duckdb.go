@@ -39,8 +39,9 @@ import (
 	"github.com/apache/arrow-adbc/go/adbc/drivermgr"
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
 	"github.com/apache/arrow/go/v17/arrow/ipc"
+	"github.com/apache/arrow/go/v17/arrow/memory"
+	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 )
 
 // DuckDBExtension represents a DuckDB extension with its name and load preference.
@@ -72,7 +73,7 @@ func OpenDuckDBConnection(ctx context.Context, dbURL string, additionalExtension
 	}
 
 	conn, err := db.Open(ctx)
-	if err != nil || conn == nil {
+	if err != nil {
 		return nil, fmt.Errorf("failed to open connection to DuckDB database: %w", err)
 	}
 
@@ -97,7 +98,7 @@ type DuckDBRecordReader struct {
 }
 
 // NewDuckDBRecordReader creates a new reader for reading records from DuckDB.
-func NewDuckDBRecordReader(ctx context.Context, conn adbc.Connection, query string) (arrio.Reader, error) {
+func NewDuckDBRecordReader(ctx context.Context, conn adbc.Connection, query string) (*DuckDBRecordReader, error) {
 	stmt, err := conn.NewStatement()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create statement: %w", err)
@@ -155,10 +156,11 @@ type DuckDBRecordWriter struct {
 	conn      adbc.Connection
 	tableName string
 	stmt      adbc.Statement
+	alloc     memory.Allocator
 }
 
 // NewDuckDBRecordWriter creates a new writer for writing records to DuckDB.
-func NewDuckDBRecordWriter(ctx context.Context, conn adbc.Connection, tableName string) (arrio.Writer, error) {
+func NewDuckDBRecordWriter(ctx context.Context, conn adbc.Connection, tableName string) (*DuckDBRecordWriter, error) {
 	stmt, err := conn.NewStatement()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create statement: %w", err)
@@ -174,11 +176,14 @@ func NewDuckDBRecordWriter(ctx context.Context, conn adbc.Connection, tableName 
 		return nil, fmt.Errorf("failed to set ingest target table: %w", err)
 	}
 
+	alloc := memoryPool.GetAllocator()
+
 	return &DuckDBRecordWriter{
 		ctx:       ctx,
 		conn:      conn,
 		tableName: tableName,
 		stmt:      stmt,
+		alloc:     alloc,
 	}, nil
 }
 
@@ -188,9 +193,8 @@ func (w *DuckDBRecordWriter) Write(record arrow.Record) error {
 		return fmt.Errorf("received record with no rows")
 	}
 
-	// Create a temporary in-memory IPC stream from the record
 	var buf bytes.Buffer
-	writer := ipc.NewWriter(&buf, ipc.WithSchema(record.Schema()))
+	writer := ipc.NewWriter(&buf, ipc.WithSchema(record.Schema()), ipc.WithAllocator(w.alloc))
 	if err := writer.Write(record); err != nil {
 		return fmt.Errorf("failed to write record to IPC stream: %w", err)
 	}
@@ -199,29 +203,26 @@ func (w *DuckDBRecordWriter) Write(record arrow.Record) error {
 		return fmt.Errorf("failed to close IPC writer: %w", err)
 	}
 
-	reader, err := ipc.NewReader(&buf)
+	reader, err := ipc.NewReader(&buf, ipc.WithAllocator(w.alloc))
 	if err != nil {
 		return fmt.Errorf("failed to create IPC reader: %w", err)
 	}
+	defer reader.Release()
 
-	// Bind the IPC stream to the DuckDB statement
 	if err := w.stmt.BindStream(w.ctx, reader); err != nil {
-		reader.Release()
 		return fmt.Errorf("failed to bind stream: %w", err)
 	}
 
-	// Execute the statement to ingest the data
 	if _, err := w.stmt.ExecuteUpdate(w.ctx); err != nil {
-		reader.Release()
 		return fmt.Errorf("failed to execute update: %w", err)
 	}
 
-	reader.Release()
 	return nil
 }
 
 // Close closes the DuckDB writer.
 func (w *DuckDBRecordWriter) Close() error {
+	defer memoryPool.PutAllocator(w.alloc)
 	return w.stmt.Close()
 }
 
