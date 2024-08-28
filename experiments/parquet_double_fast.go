@@ -27,7 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package integrations
+package experiments
 
 import (
 	"context"
@@ -61,11 +61,16 @@ type ParquetRows struct {
 }
 
 // NewParquetReader initializes a new ParquetRows reader with the provided options.
-func NewParquetRowsReader(ctx context.Context, filePath string, opts *ParquetReadOptions) (*ParquetRows, error) {
+func NewParquetRowsReader(ctx context.Context, filePath string) (*ParquetRows, error) {
 	alloc := pool.GetAllocator()
 
+	opts := pqarrow.ArrowReadProperties{
+		Parallel:  true,
+		BatchSize: 10000000,
+	}
+
 	// Open the Parquet file
-	rdr, err := file.OpenParquetFile(filePath, opts.MemoryMap)
+	rdr, err := file.OpenParquetFile(filePath, false)
 	if err != nil {
 		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to open Parquet file: %w", err)
@@ -77,7 +82,7 @@ func NewParquetRowsReader(ctx context.Context, filePath string, opts *ParquetRea
 	}()
 
 	// Create an Arrow-based file reader
-	fileReader, err := pqarrow.NewFileReader(rdr, opts.toArrowReadProperties(), alloc)
+	fileReader, err := pqarrow.NewFileReader(rdr, opts, alloc)
 	if err != nil {
 		pool.PutAllocator(alloc)
 		return nil, fmt.Errorf("failed to create Arrow file reader: %w", err)
@@ -92,7 +97,7 @@ func NewParquetRowsReader(ctx context.Context, filePath string, opts *ParquetRea
 	}
 
 	// Initialize the record reader
-	recordReader, err := fileReader.GetRecordReader(ctx, opts.ColumnIndices, opts.RowGroups)
+	recordReader, err := fileReader.GetRecordReader(ctx, nil, nil)
 	if err != nil {
 		pool.PutAllocator(alloc)
 		_ = rdr.Close()
@@ -111,7 +116,7 @@ func NewParquetRowsReader(ctx context.Context, filePath string, opts *ParquetRea
 		schema:       schema,
 		alloc:        alloc,
 		columns:      columns,
-		bufferSize:   int(opts.ChunkSize),
+		bufferSize:   int(opts.BatchSize),
 	}, nil
 }
 
@@ -270,21 +275,70 @@ func (p *ParquetRows) ColumnTypePrecisionScale(index int) (precision, scale int6
 	return 0, 0, false
 }
 
-// ColumnTypeScanType returns the Go type for scanning the column at the specified index.
 func (p *ParquetRows) ColumnTypeScanType(index int) reflect.Type {
 	switch p.schema.Field(index).Type.ID() {
 	case arrow.BOOL:
 		return reflect.TypeOf(false)
+	case arrow.INT8:
+		return reflect.TypeOf(int8(0))
+	case arrow.INT16:
+		return reflect.TypeOf(int16(0))
 	case arrow.INT32:
 		return reflect.TypeOf(int32(0))
 	case arrow.INT64:
 		return reflect.TypeOf(int64(0))
+	case arrow.UINT32:
+		return reflect.TypeOf(uint32(0))
+	case arrow.UINT64:
+		return reflect.TypeOf(uint64(0))
 	case arrow.FLOAT32:
 		return reflect.TypeOf(float32(0))
 	case arrow.FLOAT64:
 		return reflect.TypeOf(float64(0))
+	case arrow.TIMESTAMP, arrow.DATE32, arrow.DATE64, arrow.TIME32:
+		return reflect.TypeOf(time.Time{})
+	case arrow.BINARY:
+		return reflect.TypeOf([]byte{})
+	case arrow.LIST, arrow.FIXED_SIZE_LIST:
+		return reflect.TypeOf([]interface{}{})
+	case arrow.STRUCT:
+		return reflect.TypeOf(struct{}{})
 	case arrow.STRING:
 		return reflect.TypeOf("")
+	}
+	return reflect.TypeOf(nil)
+}
+
+func GoTypeToArrowType(goType reflect.Type) arrow.DataType {
+	switch goType {
+	case reflect.TypeOf(false):
+		return arrow.FixedWidthTypes.Boolean
+	case reflect.TypeOf(int8(0)):
+		return arrow.PrimitiveTypes.Int8
+	case reflect.TypeOf(int16(0)):
+		return arrow.PrimitiveTypes.Int16
+	case reflect.TypeOf(int32(0)):
+		return arrow.PrimitiveTypes.Int32
+	case reflect.TypeOf(int64(0)):
+		return arrow.PrimitiveTypes.Int64
+	case reflect.TypeOf(uint32(0)):
+		return arrow.PrimitiveTypes.Uint32
+	case reflect.TypeOf(uint64(0)):
+		return arrow.PrimitiveTypes.Uint64
+	case reflect.TypeOf(float32(0)):
+		return arrow.PrimitiveTypes.Float32
+	case reflect.TypeOf(float64(0)):
+		return arrow.PrimitiveTypes.Float64
+	case reflect.TypeOf(time.Time{}):
+		return &arrow.TimestampType{Unit: arrow.Second} // specify unit if needed
+	case reflect.TypeOf([]byte{}):
+		return arrow.BinaryTypes.Binary
+	case reflect.TypeOf([]interface{}{}):
+		return arrow.ListOf(arrow.PrimitiveTypes.Int32) // Adjust based on actual list contents
+	case reflect.TypeOf(struct{}{}):
+		return arrow.StructOf(arrow.Field{Name: "field", Type: arrow.PrimitiveTypes.Int32}) // Define actual fields
+	case reflect.TypeOf(""):
+		return arrow.BinaryTypes.String
 	}
 	return nil
 }
