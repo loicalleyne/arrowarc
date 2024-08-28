@@ -34,9 +34,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/apache/arrow-adbc/go/adbc"
 	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
+	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/apache/arrow/go/v17/arrow/memory"
 	duckdb "github.com/arrowarc/arrowarc/integrations/duckdb"
 	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
@@ -44,8 +43,8 @@ import (
 
 // DuckDBRecordReader reads records from DuckDB queries and implements the SchemaReader interface.
 type DuckDBRecordReader struct {
-	reader arrio.Reader
-	conn   *adbc.Connection
+	reader array.RecordReader
+	runner *duckdb.DuckDBReader
 	query  string
 	schema *arrow.Schema
 	alloc  memory.Allocator
@@ -60,39 +59,37 @@ type DuckDBReadOptions struct {
 }
 
 // NewDuckDBRecordReader creates a new reader for reading records from a DuckDB query.
-func NewDuckDBRecordReader(ctx context.Context, conn *adbc.Connection, query string) (*DuckDBRecordReader, error) {
+func NewDuckDBRecordReader(ctx context.Context, runner *duckdb.DuckDBReader, query string) (*DuckDBRecordReader, error) {
 	alloc := memoryPool.GetAllocator()
 
-	reader, err := duckdb.NewDuckDBRecordReader(ctx, *conn, query)
+	// Use the DuckDBSQLRunner's method to run the query and get the records
+	records, err := runner.RunSQL(query)
 	if err != nil {
 		memoryPool.PutAllocator(alloc)
-		return nil, fmt.Errorf("failed to create DuckDB record reader: %w", err)
+		return nil, fmt.Errorf("failed to run DuckDB query: %w", err)
 	}
+
+	schema := records[0].Schema()
+
+	// Create a record reader from the Arrow records
+	reader, err := array.NewRecordReader(schema, records)
 
 	return &DuckDBRecordReader{
 		reader: reader,
-		conn:   conn,
+		runner: runner,
 		query:  query,
 		alloc:  alloc,
-	}, nil
+		schema: records[0].Schema(),
+	}, err
 }
 
 // Read reads the next record from the DuckDB query result.
 func (r *DuckDBRecordReader) Read() (arrow.Record, error) {
 	if r.closed {
-		return nil, fmt.Errorf("reader is closed")
-	}
-
-	record, err := r.reader.Read()
-	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("error reading DuckDB record: %w", err)
-	}
-	if record == nil {
 		return nil, io.EOF
 	}
 
-	record.Retain()
-	return record, nil
+	return r.reader.Record(), nil
 }
 
 // Schema returns the schema of the records being read from the DuckDB query.
@@ -109,9 +106,7 @@ func (r *DuckDBRecordReader) Close() error {
 	defer memoryPool.PutAllocator(r.alloc)
 
 	r.closed = true
-	if err := duckdb.CloseDuckDBConnection(*r.conn); err != nil {
-		return fmt.Errorf("failed to close DuckDB connection: %w", err)
-	}
+	r.reader.Release()
 	return nil
 }
 
@@ -125,20 +120,25 @@ func ReadFileStream(ctx context.Context, opts *DuckDBReadOptions) (SchemaReader,
 		}
 	}
 
-	conn, err := duckdb.OpenDuckDBConnection(ctx, "", opts.Extensions)
+	readOpts := duckdb.DuckDBReadOptions{
+		Extensions: opts.Extensions,
+		Query:      opts.FilePath,
+	}
+
+	runner, err := duckdb.NewDuckDBReader(ctx, ":memory:", &readOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
+		return nil, fmt.Errorf("failed to create DuckDB runner: %w", err)
 	}
 
 	query, err := buildQuery(opts.FileType, opts.FilePath)
 	if err != nil {
-		duckdb.CloseDuckDBConnection(conn)
+		runner.Close()
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	reader, err := NewDuckDBRecordReader(ctx, &conn, query)
+	reader, err := NewDuckDBRecordReader(ctx, runner, query)
 	if err != nil {
-		duckdb.CloseDuckDBConnection(conn)
+		runner.Close()
 		return nil, fmt.Errorf("failed to create DuckDB record reader: %w", err)
 	}
 
