@@ -38,7 +38,7 @@ import (
 	"time"
 
 	bigquery "github.com/arrowarc/arrowarc/integrations/bigquery"
-	duckdb "github.com/arrowarc/arrowarc/integrations/duckdb"
+	parquet "github.com/arrowarc/arrowarc/integrations/filesystem"
 	"github.com/arrowarc/arrowarc/pipeline"
 	"github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
@@ -103,6 +103,50 @@ func TestReadBigQueryStream(t *testing.T) {
 	}
 }
 
+func TestWriteToParquetFromBigQuery(t *testing.T) {
+	utils.LoadEnv()
+	// Skip this test in CI environment if GCP credentials are not set
+	if os.Getenv("CI") == "true" || os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		t.Skip("Skipping BigQuery to Parquet integration test in CI environment or when GCP credentials are not set.")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Initialize BigQuery client
+	bq, err := bigquery.NewBigQueryReadClient(ctx)
+	assert.NoError(t, err, "Error should be nil when creating BigQuery client")
+
+	// Create a BigQuery reader
+	reader, err := bq.NewBigQueryReader(ctx, "tfmv-371720", "tpch", "region")
+	assert.NoError(t, err, "Error should be nil when creating BigQuery Arrow reader")
+	assert.NotNil(t, reader, "Reader should not be nil")
+	defer reader.Close()
+
+	// Initialize Parquet writer
+	schema, err := reader.Schema()
+	assert.NoError(t, err, "Error should be nil when getting schema")
+	assert.NotNil(t, schema, "Schema should not be nil")
+
+	props := parquet.NewDefaultParquetWriterProperties()
+
+	parquetWriter, err := parquet.NewParquetWriter("region.parquet", schema, props)
+	assert.NoError(t, err, "Error should be nil when creating Parquet writer")
+	assert.NotNil(t, parquetWriter, "Parquet writer should not be nil")
+	defer parquetWriter.Close()
+
+	// Setup the pipeline to write records from BigQuery to Parquet
+	p := pipeline.NewDataPipeline(reader, parquetWriter)
+	assert.NoError(t, err, "Error should be nil when creating data pipeline")
+
+	// Run the pipeline
+	r, err := p.Start(ctx)
+	assert.NoError(t, err, "Error should be nil when running data pipeline")
+	// Print the transport report
+	fmt.Println(r.Report())
+}
+
+/*
 func TestWriteToDuckDBFromBigQuery(t *testing.T) {
 	utils.LoadEnv()
 	// Skip this test in CI environment if GCP credentials are not set
@@ -157,3 +201,4 @@ func TestWriteToDuckDBFromBigQuery(t *testing.T) {
 	fmt.Printf("Total rows written to DuckDB: %d\n", countRecord.NumRows())
 	countRecord.Release()
 }
+*/

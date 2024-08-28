@@ -143,6 +143,13 @@ func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, w
 				return
 			}
 
+			// Validate the record
+			if record == nil || record.NumCols() == 0 || record.NumRows() == 0 {
+				log.Println("Received empty or invalid record, skipping.")
+				record.Release() // Release the invalid or empty record to avoid memory leaks
+				continue
+			}
+
 			// Update metrics
 			dp.metrics.RecordsProcessed++
 			dp.metrics.TotalBytes += int64(record.Schema().Metadata().FindKey("size"))
@@ -170,6 +177,16 @@ func (dp *DataPipeline) startWriter(ctx context.Context, ch chan arrow.Record, w
 			if !ok {
 				return // Channel closed, exit the writer
 			}
+
+			// Validate the record before writing, ignore EOF records
+			if record == nil || record.NumCols() == 0 || record.NumRows() == 0 {
+				log.Println("Received empty or invalid record, skipping.")
+				record.Release() // Release the invalid or empty record to avoid memory leaks
+				continue
+			}
+
+			// Write the record to the writer
+
 			if err := dp.writer.Write(record); err != nil {
 				log.Printf("Error writing record: %v", err)
 				dp.errCh <- err
