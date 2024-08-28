@@ -144,3 +144,15 @@ func ReadFileStream(ctx context.Context, opts *DuckDBReadOptions) (SchemaReader,
 
 	return reader, nil
 }
+
+// buildQuery constructs a query string based on the file type and path.
+func buildQuery(fileType, filePath string) (string, error) {
+	switch fileType {
+	case "iceberg":
+		return fmt.Sprintf("SELECT * FROM iceberg_scan('%s')", filePath), nil
+	case "parquet":
+		return fmt.Sprintf("SELECT * FROM parquet_scan('%s')", filePath), nil
+	default: // Try anyway
+		return fmt.Sprintf("SELECT * FROM ('%s')", filePath), nil
+	}
+}

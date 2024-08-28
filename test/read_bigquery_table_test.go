@@ -39,6 +39,7 @@ import (
 
 	bigquery "github.com/arrowarc/arrowarc/integrations/bigquery"
 	duckdb "github.com/arrowarc/arrowarc/integrations/duckdb"
+	"github.com/arrowarc/arrowarc/pipeline"
 	"github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -133,19 +134,15 @@ func TestWriteToDuckDBFromBigQuery(t *testing.T) {
 	assert.NoError(t, err, "Error should be nil when creating DuckDB writer")
 	defer duckDBWriter.Close() // Ensure DuckDB writer is closed regardless of success or failure
 
-	// Write BigQuery records to DuckDB
-	for {
-		record, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		assert.NoError(t, err, "Error should be nil when reading from BigQuery table")
+	// Setup the pipeline to write records from BigQuery to DuckDB
+	p := pipeline.NewDataPipeline(reader, duckDBWriter)
+	assert.NoError(t, err, "Error should be nil when creating data pipeline")
 
-		err = duckDBWriter.Write(record)
-		assert.NoError(t, err, "Error should be nil when writing to DuckDB")
-
-		record.Release()
-	}
+	// Run the pipeline
+	r, err := p.Start(ctx)
+	assert.NoError(t, err, "Error should be nil when running data pipeline")
+	// print the transport report
+	r.Report()
 
 	// Query DuckDB to get the count of records
 	duckDBReader, err := duckdb.NewDuckDBReader(ctx, duckDBURL, &duckdb.DuckDBReadOptions{
