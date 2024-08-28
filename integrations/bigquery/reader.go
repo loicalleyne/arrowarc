@@ -57,6 +57,7 @@ type BigQueryReadClient struct {
 type BigQueryReadCallOptions struct {
 	CreateReadSession []gax.CallOption
 	ReadRows          []gax.CallOption
+	ReadStream        []gax.CallOption
 }
 
 func NewBigQueryReadClient(ctx context.Context, opts ...option.ClientOption) (*BigQueryReadClient, error) {
@@ -101,13 +102,18 @@ func defaultBigQueryReadCallOptions() *BigQueryReadCallOptions {
 }
 
 func (bq *BigQueryReadClient) NewBigQueryReader(ctx context.Context, projectID, datasetID, tableID string) (*BigQueryReader, error) {
+	tableReadOptions := &storagepb.ReadSession_TableReadOptions{
+		SelectedFields: []string{"r_regionkey", "r_name", "r_comment"},
+	}
+
 	req := &storagepb.CreateReadSessionRequest{
 		Parent: fmt.Sprintf("projects/%s", projectID),
 		ReadSession: &storagepb.ReadSession{
-			Table:      fmt.Sprintf("projects/%s/datasets/%s/tables/%s", projectID, datasetID, tableID),
-			DataFormat: storagepb.DataFormat_ARROW,
+			Table:       fmt.Sprintf("projects/%s/datasets/%s/tables/%s", projectID, datasetID, tableID),
+			DataFormat:  storagepb.DataFormat_ARROW,
+			ReadOptions: tableReadOptions,
 		},
-		MaxStreamCount: 5,
+		MaxStreamCount: 1,
 	}
 
 	session, err := bq.client.CreateReadSession(ctx, req, bq.callOptions.CreateReadSession...)
@@ -121,14 +127,28 @@ func (bq *BigQueryReadClient) NewBigQueryReader(ctx context.Context, projectID, 
 
 	alloc := memoryPool.GetAllocator()
 
+	// Ensure schema is properly initialized
+	schemaBytes := session.GetArrowSchema().GetSerializedSchema()
+	if len(schemaBytes) == 0 {
+		return nil, fmt.Errorf("failed to retrieve schema bytes")
+	}
+
+	// Initialize the IPC reader for schema validation
+	buf := bytes.NewBuffer(schemaBytes)
+	ipcReader, err := ipc.NewReader(buf, ipc.WithAllocator(alloc))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create initial IPC reader for schema: %w", err)
+	}
+
 	return &BigQueryReader{
 		ctx:         ctx,
 		client:      bq.client,
 		callOptions: bq.callOptions,
-		schemaBytes: session.GetArrowSchema().GetSerializedSchema(),
+		schemaBytes: schemaBytes,
 		streams:     session.GetStreams(),
 		mem:         alloc,
 		buf:         bytes.NewBuffer(nil),
+		r:           ipcReader,
 	}, nil
 }
 
@@ -148,11 +168,15 @@ type BigQueryReader struct {
 
 func (r *BigQueryReader) Read() (arrow.Record, error) {
 	var err error
+
+	// Ensure the IPC reader is properly initialized with the schema
 	r.once.Do(func() {
-		r.buf.Write(r.schemaBytes)
-		r.r, err = ipc.NewReader(r.buf, ipc.WithAllocator(r.mem))
-		if err != nil {
-			return
+		if r.r == nil {
+			r.buf.Write(r.schemaBytes)
+			r.r, err = ipc.NewReader(r.buf, ipc.WithAllocator(r.mem))
+			if err != nil {
+				return
+			}
 		}
 	})
 
@@ -211,6 +235,10 @@ func (r *BigQueryReader) Close() error {
 	return nil
 }
 
-func (r *BigQueryReader) Schema() *arrow.Schema {
-	return r.r.Schema()
+func (r *BigQueryReader) Schema() (*arrow.Schema, error) {
+	// Ensure the IPC reader is initialized and schema is available
+	if r.r != nil {
+		return r.r.Schema(), nil
+	}
+	return nil, fmt.Errorf("schema is not initialized")
 }
