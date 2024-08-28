@@ -38,3 +38,5 @@ pkg/common/config/secrets.go
 assets/keys/
 build.sh
 cdata/
+integrations/bigquery/experimental_managed_writer
+
