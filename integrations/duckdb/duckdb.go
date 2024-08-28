@@ -69,7 +69,7 @@ type DuckDBExtension struct {
 // DefaultExtensions returns the default extensions to be loaded in DuckDB.
 func DefaultExtensions() []DuckDBExtension {
 	return []DuckDBExtension{
-		{Name: "arrow", LoadByDefault: true},
+		{Name: "arrow", LoadByDefault: false},
 	}
 }
 

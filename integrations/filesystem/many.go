@@ -115,7 +115,7 @@ func ReadFileStream(ctx context.Context, opts *DuckDBReadOptions) (SchemaReader,
 	// Set default extensions if none are provided
 	if len(opts.Extensions) == 0 {
 		opts.Extensions = []duckdb.DuckDBExtension{
-			{Name: "httpfs", LoadByDefault: true},
+			{Name: "httpfs", LoadByDefault: false},
 			{Name: opts.FileType, LoadByDefault: true},
 		}
 	}
@@ -143,20 +143,4 @@ func ReadFileStream(ctx context.Context, opts *DuckDBReadOptions) (SchemaReader,
 	}
 
 	return reader, nil
-}
-
-// buildQuery constructs a query string based on the file type and path.
-func buildQuery(fileType, filePath string) (string, error) {
-	switch fileType {
-	case "iceberg":
-		return fmt.Sprintf("SELECT * FROM iceberg_scan('%s')", filePath), nil
-	case "parquet":
-		return fmt.Sprintf("SELECT * FROM parquet_scan('%s')", filePath), nil
-	case "csv":
-		return fmt.Sprintf("SELECT * FROM read_csv_auto('%s')", filePath), nil
-	case "json":
-		return fmt.Sprintf("SELECT * FROM read_json_auto('%s')", filePath), nil
-	default:
-		return "", fmt.Errorf("unsupported file type: %s", fileType)
-	}
 }
