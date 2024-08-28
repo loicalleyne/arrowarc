@@ -31,12 +31,14 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"testing"
 	"time"
 
 	bigquery "github.com/arrowarc/arrowarc/integrations/bigquery"
+	duckdb "github.com/arrowarc/arrowarc/integrations/duckdb"
 	"github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
@@ -81,6 +83,7 @@ func TestReadBigQueryStream(t *testing.T) {
 
 			reader, err := bq.NewBigQueryReader(ctx, test.projectID, test.datasetID, test.tableID)
 			assert.NoError(t, err, "Error should be nil when creating BigQuery Arrow reader")
+			defer reader.Close() // Ensure reader is closed regardless of success or failure
 
 			var recordsRead int
 			for {
@@ -97,4 +100,63 @@ func TestReadBigQueryStream(t *testing.T) {
 			assert.Greater(t, recordsRead, 0, "Should have read at least one record")
 		})
 	}
+}
+
+func TestWriteToDuckDBFromBigQuery(t *testing.T) {
+	utils.LoadEnv()
+	// Skip this test in CI environment if GCP credentials are not set
+	if os.Getenv("CI") == "true" || os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
+		t.Skip("Skipping BigQuery to DuckDB integration test in CI environment or when GCP credentials are not set.")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Initialize BigQuery client
+	bq, err := bigquery.NewBigQueryReadClient(ctx)
+	assert.NoError(t, err, "Error should be nil when creating BigQuery client")
+
+	// Create a BigQuery reader
+	reader, err := bq.NewBigQueryReader(ctx, "tfmv-371720", "tpch", "region")
+	assert.NoError(t, err, "Error should be nil when creating BigQuery Arrow reader")
+	defer reader.Close() // Ensure reader is closed regardless of success or failure
+
+	// Initialize DuckDB in-memory database and writer
+	duckDBURL := ":memory:?cache=shared"
+	duckDBWriter, err := duckdb.NewDuckDBWriter(ctx, duckDBURL, "region", []duckdb.DuckDBExtension{
+		{Name: "inet", LoadByDefault: true},
+		{Name: "iceberg", LoadByDefault: true},
+		{Name: "fts", LoadByDefault: true},
+		{Name: "icu", LoadByDefault: true},
+	})
+
+	assert.NoError(t, err, "Error should be nil when creating DuckDB writer")
+	defer duckDBWriter.Close() // Ensure DuckDB writer is closed regardless of success or failure
+
+	// Write BigQuery records to DuckDB
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		assert.NoError(t, err, "Error should be nil when reading from BigQuery table")
+
+		err = duckDBWriter.Write(record)
+		assert.NoError(t, err, "Error should be nil when writing to DuckDB")
+
+		record.Release()
+	}
+
+	// Query DuckDB to get the count of records
+	duckDBReader, err := duckdb.NewDuckDBReader(ctx, duckDBURL, &duckdb.DuckDBReadOptions{
+		Query: "SELECT COUNT(*) FROM region",
+	})
+	assert.NoError(t, err, "Error should be nil when creating DuckDB reader")
+	defer duckDBReader.Close() // Ensure DuckDB reader is closed regardless of success or failure
+
+	countRecord, err := duckDBReader.Read()
+	assert.NoError(t, err, "Error should be nil when reading from DuckDB")
+
+	fmt.Printf("Total rows written to DuckDB: %d\n", countRecord.NumRows())
+	countRecord.Release()
 }
