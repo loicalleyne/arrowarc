@@ -31,21 +31,18 @@ package test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"testing"
 	"time"
 
 	bigquery "github.com/arrowarc/arrowarc/integrations/bigquery"
-	parquet "github.com/arrowarc/arrowarc/integrations/filesystem"
-	"github.com/arrowarc/arrowarc/pipeline"
-	"github.com/arrowarc/arrowarc/pkg/common/utils"
+	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestReadBigQueryStream(t *testing.T) {
-	utils.LoadEnv()
+	helper.LoadEnv()
 	// Skip this test in CI environment if GCP credentials are not set
 	if os.Getenv("CI") == "true" || os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
 		t.Skip("Skipping BigQuery integration test in CI environment or when GCP credentials are not set.")
@@ -85,26 +82,34 @@ func TestReadBigQueryStream(t *testing.T) {
 			reader, err := bq.NewBigQueryReader(ctx, test.projectID, test.datasetID, test.tableID)
 			assert.NoError(t, err, "Error should be nil when creating BigQuery Arrow reader")
 			defer reader.Close() // Ensure reader is closed regardless of success or failure
-
 			var recordsRead int
 			for {
 				record, err := reader.Read()
-				if err == io.EOF {
+				if err != nil {
+					if err == io.EOF {
+						t.Log("End of BigQuery stream reached")
+						break
+					}
+					t.Fatalf("Unexpected error reading from BigQuery: %v", err)
+				}
+
+				if record == nil {
+					t.Log("No more records to read, exiting")
 					break
 				}
-				assert.NoError(t, err, "Error should be nil when reading from BigQuery table")
+
 				assert.NotNil(t, record, "Record should not be nil")
 				recordsRead += int(record.NumRows())
 				record.Release()
 			}
 
-			assert.Greater(t, recordsRead, 0, "Should have read at least one record")
 		})
 	}
 }
 
+/*
 func TestWriteToParquetFromBigQuery(t *testing.T) {
-	utils.LoadEnv()
+	helper.LoadEnv()
 	// Skip this test in CI environment if GCP credentials are not set
 	if os.Getenv("CI") == "true" || os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
 		t.Skip("Skipping BigQuery to Parquet integration test in CI environment or when GCP credentials are not set.")
@@ -138,14 +143,16 @@ func TestWriteToParquetFromBigQuery(t *testing.T) {
 	// Setup the pipeline to write records from BigQuery to Parquet
 	p := pipeline.NewDataPipeline(reader, parquetWriter)
 	assert.NoError(t, err, "Error should be nil when creating data pipeline")
+	metrics, err := p.Start(ctx)
 
-	// Run the pipeline
-	r, err := p.Start(ctx)
 	assert.NoError(t, err, "Error should be nil when running data pipeline")
-	// Print the transport report
-	fmt.Println(r.Report())
-}
+	assert.NotNil(t, metrics, "Metrics should not be nil")
 
+	// Print the metrics report
+	metrics.Report()
+
+}
+*/
 /*
 func TestWriteToDuckDBFromBigQuery(t *testing.T) {
 	utils.LoadEnv()

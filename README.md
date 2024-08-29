@@ -72,6 +72,7 @@ I’m actively working on adding new features and integrations. Here’s where t
 | **JSON To Parquet** | ✅           |
 | **Parquet to CSV**  | ✅           |
 | **Parquet to JSON** | ✅           |
+| **Flight Server**   | ✅             |
 
 ---
 

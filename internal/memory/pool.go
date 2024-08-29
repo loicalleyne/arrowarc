@@ -77,3 +77,12 @@ func NewGoAllocator() memory.Allocator {
 func NewAllocator() memory.Allocator {
 	return memory.DefaultAllocator
 }
+
+func Reset() {
+	memPool = sync.Pool{
+		New: func() interface{} {
+			// This creates a new GoAllocator when the pool is empty
+			return memory.NewGoAllocator()
+		},
+	}
+}
