@@ -1,6 +1,4 @@
-package integrations
-
-// [START bigquerystorage_write_default_complexschema]
+package experiments
 
 import (
 	"context"

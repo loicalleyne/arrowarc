@@ -1,4 +1,4 @@
-package integrations
+package experiments
 
 import "fmt"
 

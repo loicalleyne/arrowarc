@@ -124,7 +124,7 @@ func (dp *DataPipeline) Start(ctx context.Context) (*Metrics, error) {
 // startReader reads records from the reader and sends them to the channel
 func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, wg *sync.WaitGroup) {
 	defer wg.Done()
-	defer close(ch)
+	defer close(ch) // Close the channel to signal writer when done
 	defer dp.reader.Close()
 
 	for {
@@ -135,6 +135,7 @@ func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, w
 		default:
 			record, err := dp.reader.Read()
 			if err == io.EOF {
+				log.Println("Reached end of reader stream.")
 				return
 			}
 			if err != nil {
@@ -143,14 +144,12 @@ func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, w
 				return
 			}
 
-			// Validate the record
 			if record == nil || record.NumCols() == 0 || record.NumRows() == 0 {
 				log.Println("Received empty or invalid record, skipping.")
 				record.Release() // Release the invalid or empty record to avoid memory leaks
 				continue
 			}
 
-			// Update metrics
 			dp.metrics.RecordsProcessed++
 			dp.metrics.TotalBytes += int64(record.Schema().Metadata().FindKey("size"))
 
@@ -172,20 +171,19 @@ func (dp *DataPipeline) startWriter(ctx context.Context, ch chan arrow.Record, w
 	for {
 		select {
 		case <-ctx.Done():
+			log.Println("Context canceled, stopping writer.")
 			return
 		case record, ok := <-ch:
 			if !ok {
-				return // Channel closed, exit the writer
+				log.Println("Channel closed, stopping writer.")
+				return // Exit the writer when channel is closed
 			}
 
-			// Validate the record before writing, ignore EOF records
 			if record == nil || record.NumCols() == 0 || record.NumRows() == 0 {
 				log.Println("Received empty or invalid record, skipping.")
 				record.Release() // Release the invalid or empty record to avoid memory leaks
 				continue
 			}
-
-			// Write the record to the writer
 
 			if err := dp.writer.Write(record); err != nil {
 				log.Printf("Error writing record: %v", err)

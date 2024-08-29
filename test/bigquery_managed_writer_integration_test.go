@@ -36,7 +36,7 @@ import (
 	"testing"
 
 	"cloud.google.com/go/bigquery"
-	x "github.com/arrowarc/arrowarc/integrations/bigquery"
+	x "github.com/arrowarc/arrowarc/experiments"
 )
 
 func TestAppends(t *testing.T) {
