@@ -58,7 +58,6 @@ type BigQueryReadClient struct {
 type BigQueryReadCallOptions struct {
 	CreateReadSession []gax.CallOption
 	ReadRows          []gax.CallOption
-	ReadStream        []gax.CallOption
 }
 
 func NewBigQueryReadClient(ctx context.Context, opts ...option.ClientOption) (*BigQueryReadClient, error) {
@@ -105,7 +104,7 @@ func defaultBigQueryReadCallOptions() *BigQueryReadCallOptions {
 func (bq *BigQueryReadClient) NewBigQueryReader(ctx context.Context, projectID, datasetID, tableID string) (*BigQueryReader, error) {
 	// Define the ArrowSerializationOptions with compression
 	arrowSerializationOptions := &storagepb.ArrowSerializationOptions{
-		BufferCompression: storagepb.ArrowSerializationOptions_LZ4_FRAME, // Use LZ4_FRAME compression
+		BufferCompression: storagepb.ArrowSerializationOptions_LZ4_FRAME,
 	}
 
 	// Create ReadOptions and set ArrowSerializationOptions
@@ -125,6 +124,7 @@ func (bq *BigQueryReadClient) NewBigQueryReader(ctx context.Context, projectID, 
 		},
 		MaxStreamCount: 1,
 	}
+
 	session, err := bq.client.CreateReadSession(ctx, req, bq.callOptions.CreateReadSession...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create read session: %w", err)
@@ -196,12 +196,6 @@ func (r *BigQueryReader) Read() (arrow.Record, error) {
 		return nil, fmt.Errorf("no streams available")
 	}
 
-	// Get the single stream name
-	streamName := r.streams[0].Name
-	offset := int64(0)
-	retries := 0
-	retryLimit := 3
-
 	// Create a channel to receive ReadRowsResponses
 	responseChan := make(chan *storagepb.ReadRowsResponse)
 	errorChan := make(chan error, 1)
@@ -211,39 +205,9 @@ func (r *BigQueryReader) Read() (arrow.Record, error) {
 		defer close(responseChan)
 		defer close(errorChan) // Close errorChan when done
 
-		for retries < retryLimit {
-			stream, err := r.client.ReadRows(r.ctx, &storagepb.ReadRowsRequest{
-				ReadStream: streamName,
-				Offset:     offset,
-			}, r.callOptions.ReadRows...)
-
-			if err != nil {
-				errorChan <- fmt.Errorf("failed to stream rows: %w", err)
-				return
-			}
-			defer stream.CloseSend()
-
-			for {
-				response, err := stream.Recv()
-				if err != nil {
-					if err == io.EOF || status.Code(err) == codes.Canceled || r.ctx.Err() != nil {
-						errorChan <- io.EOF
-						return
-					}
-
-					if status.Code(err) == codes.ResourceExhausted {
-						retryDelay := time.Duration(2<<retries) * time.Second
-						time.Sleep(retryDelay)
-						retries++
-						break // Retry the entire loop
-					}
-					errorChan <- fmt.Errorf("error receiving stream response: %w", err)
-					return
-				}
-				responseChan <- response
-			}
+		if err := r.readFromStream(responseChan); err != nil {
+			errorChan <- err
 		}
-		errorChan <- fmt.Errorf("retries exhausted, no more records to read")
 	}()
 
 	// Process responses from the channel
@@ -262,13 +226,8 @@ func (r *BigQueryReader) Read() (arrow.Record, error) {
 					return nil, err
 				}
 				if record != nil {
-					// Update offset by adding the number of rows in the current response
-					offset += response.GetRowCount()
 					return record, nil
 				}
-			} else {
-				// If no undecodedBatch, continue to next response
-				offset += response.GetRowCount() // Ensure offset is updated even if no data in batch
 			}
 		case err := <-errorChan:
 			return nil, err
@@ -276,6 +235,48 @@ func (r *BigQueryReader) Read() (arrow.Record, error) {
 			return nil, r.ctx.Err() // Handle context cancellation
 		}
 	}
+}
+
+// Function for reading from the stream with retries
+func (r *BigQueryReader) readFromStream(responseChan chan<- *storagepb.ReadRowsResponse) error {
+	streamName := r.streams[0].Name
+	offset := int64(0)
+	retries := 0
+	retryLimit := 3
+
+	for retries < retryLimit {
+		stream, err := r.client.ReadRows(r.ctx, &storagepb.ReadRowsRequest{
+			ReadStream: streamName,
+			Offset:     offset,
+		}, r.callOptions.ReadRows...)
+
+		if err != nil {
+			return fmt.Errorf("failed to stream rows: %w", err)
+		}
+		defer stream.CloseSend()
+
+		for {
+			response, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF || status.Code(err) == codes.Canceled || r.ctx.Err() != nil {
+					return io.EOF
+				}
+
+				if status.Code(err) == codes.ResourceExhausted {
+					retryDelay := time.Duration(2<<retries) * time.Second
+					time.Sleep(retryDelay)
+					retries++
+					break // Retry the entire loop
+				}
+				return fmt.Errorf("error receiving stream response: %w", err)
+			}
+			responseChan <- response
+
+			// Update offset to keep track of where we are in the stream
+			offset += response.GetRowCount()
+		}
+	}
+	return fmt.Errorf("retries exhausted, no more records to read")
 }
 
 func (r *BigQueryReader) processRecordBatch(undecodedBatch []byte) (arrow.Record, error) {
