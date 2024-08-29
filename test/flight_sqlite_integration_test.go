@@ -31,126 +31,110 @@ package test
 
 import (
 	"context"
-	"database/sql"
+	"errors"
+	"fmt"
 	"io"
-	"net"
-	"os"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/apache/arrow/go/v17/arrow/flight"
 	"github.com/apache/arrow/go/v17/arrow/flight/flightsql"
-	sqllite "github.com/arrowarc/arrowarc/integrations/flight/flightsql/sqlite"
-	"github.com/arrowarc/arrowarc/pkg/common/utils"
-	"github.com/stretchr/testify/suite"
+	sqlite "github.com/arrowarc/arrowarc/integrations/flight/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/test/bufconn"
+	"google.golang.org/grpc/metadata"
 )
 
-const bufSize = 1024 * 1024
+// Context keys for test purposes
+type contextKey string
 
-type SQLiteFlightSQLSuite struct {
-	suite.Suite
-	server     *sqllite.SQLiteFlightSQLServer
-	flightSrv  *flight.Server
-	grpcServer *grpc.Server
-	db         *sql.DB
-	listener   *bufconn.Listener
+const (
+	fooKey   contextKey = "foo"
+	traceKey contextKey = "traceKey"
+)
+
+// Middleware implementation to test client behavior with headers
+type ClientTestSendHeaderMiddleware struct {
+	ctx context.Context
+	md  metadata.MD
+	mx  sync.Mutex
 }
 
-func (suite *SQLiteFlightSQLSuite) SetupSuite() {
-	var err error
+func (c *ClientTestSendHeaderMiddleware) StartCall(ctx context.Context) context.Context {
+	c.ctx = metadata.AppendToOutgoingContext(ctx, string(fooKey), "bar")
+	return context.WithValue(c.ctx, traceKey, "super")
+}
 
-	// Create the in-memory SQLite database
-	suite.db, err = sqllite.CreateDB()
-	suite.Require().NoError(err, "failed to create SQLite database")
+func (c *ClientTestSendHeaderMiddleware) CallCompleted(ctx context.Context, err error) {
+	val, _ := ctx.Value(traceKey).(string)
+	if val != "super" {
+		panic("Invalid context in client middleware")
+	}
+}
 
-	// Create the SQLiteFlightSQL server
-	suite.server, err = sqllite.NewSQLiteFlightSQLServer(suite.db)
-	suite.Require().NoError(err, "failed to create SQLite Flight SQL Server")
+func (c *ClientTestSendHeaderMiddleware) HeadersReceived(ctx context.Context, md metadata.MD) {
+	val, _ := ctx.Value(traceKey).(string)
+	if val != "super" {
+		panic("Invalid context in client middleware")
+	}
+	c.mx.Lock()
+	defer c.mx.Unlock()
+	c.md = md
+}
 
-	// Create the gRPC server
-	suite.grpcServer = grpc.NewServer()
-	baseFlightServer := flightsql.NewFlightServer(suite.server)
+// TestClientStreamMiddleware tests the behavior of the client middleware
+func TestClientStreamMiddleware(t *testing.T) {
+	// Create server middleware for testing headers
+	serverMiddleware := []flight.ServerMiddleware{
+		flight.CreateServerMiddleware(&sqlite.ServerExpectHeaderMiddleware{}),
+		flight.CreateServerMiddleware(&sqlite.ServerMiddlewareAddHeader{}),
+	}
 
-	// Register the Flight SQL service with the gRPC server
-	flight.RegisterFlightServiceServer(suite.grpcServer, baseFlightServer)
+	// Initialize the Flight server with middleware
+	s := flight.NewServerWithMiddleware(serverMiddleware)
+	s.Init("localhost:0")
 
-	// Create an in-memory listener
-	suite.listener = bufconn.Listen(bufSize)
+	// Set up the Flight SQL server (e.g., SQLite-based server)
+	db, err := sqlite.CreateDB()
+	require.NoError(t, err)
+	srv, err := sqlite.NewSQLiteFlightSQLServer(db)
+	require.NoError(t, err)
+	s.RegisterFlightService(flightsql.NewFlightServer(srv))
 
-	// Create a channel to capture any errors from the goroutine
-	errChan := make(chan error, 1)
+	// Start the server in a goroutine
+	go s.Serve()
+	defer s.Shutdown()
 
-	// Start the Flight SQL server in a goroutine and capture any errors
-	go func() {
-		errChan <- suite.grpcServer.Serve(suite.listener)
-		close(errChan)
-	}()
+	// Create client middleware for testing
+	middleware := &ClientTestSendHeaderMiddleware{}
+	client, err := flight.NewClientWithMiddleware(s.Addr().String(), nil, []flight.ClientMiddleware{
+		flight.CreateClientMiddleware(middleware),
+	}, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	defer client.Close()
 
-	// Wait for a short period to ensure the server starts up properly
-	time.Sleep(100 * time.Millisecond)
+	// Example client request: ListActions
+	flightStream, err := client.ListActions(context.Background(), &flight.Empty{})
+	require.NoError(t, err)
 
-	// Check if there were any errors starting the server
-	select {
-	case err := <-errChan:
-		if err != nil && err != grpc.ErrServerStopped {
-			suite.T().Fatal(err) // Fail the test if there was an error
+	// Process the flight stream
+	for {
+		info, err := flightStream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			assert.NoError(t, err)
 		}
-	default:
-		// No errors, continue
+		assert.NotNil(t, info)
+		fmt.Println(info)
 	}
-}
 
-func (suite *SQLiteFlightSQLSuite) TearDownSuite() {
-	// Shutdown the gRPC server gracefully
-	suite.grpcServer.GracefulStop()
-
-	// Close the in-memory listener and SQLite database
-	suite.listener.Close()
-	suite.db.Close()
-}
-
-// Dialer provides a dialer for the bufconn listener.
-func (suite *SQLiteFlightSQLSuite) Dialer(ctx context.Context, target string) (net.Conn, error) {
-	return suite.listener.Dial()
-}
-
-func (suite *SQLiteFlightSQLSuite) TestFlightSQLQuery() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	suite.T().Log("Attempting to create a gRPC client connection...")
-	conn, err := grpc.NewClient("bufnet", grpc.WithContextDialer(suite.Dialer), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	suite.Require().NoError(err, "failed to create gRPC client")
-	defer conn.Close()
-
-	client := flight.NewFlightServiceClient(conn)
-	stream, err := client.Handshake(ctx)
-	suite.Require().NoError(err, "failed to initiate Handshake with server")
-
-	suite.T().Log("Sending handshake request...")
-	err = stream.Send(&flight.HandshakeRequest{Payload: []byte("test")})
-	suite.Require().NoError(err, "failed to send handshake request")
-
-	resp, err := stream.Recv()
-	if err == io.EOF {
-		suite.T().Fatal("Server closed connection unexpectedly")
-	} else {
-		suite.Require().NoError(err, "failed to receive handshake response")
-	}
-	suite.NotNil(resp, "expected a response from handshake")
-
-	suite.T().Logf("Received payload: %s", string(resp.Payload))
-}
-
-// Run the test suite
-func TestSQLiteFlightSQLSuite(t *testing.T) {
-	utils.LoadEnv()
-	// Skip this test in CI environment if GCP credentials are not set
-	if os.Getenv("CI") == "true" || os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
-		t.Skip("Skipping Flight SQL integration test in CI environment until stabalized.")
-	}
-	suite.Run(t, new(SQLiteFlightSQLSuite))
+	// Check headers received by the client middleware
+	middleware.mx.Lock()
+	defer middleware.mx.Unlock()
+	assert.Equal(t, []string{"bar"}, middleware.md.Get("foo"))
+	assert.Equal(t, []string{"duper"}, middleware.md.Get("super"))
 }
