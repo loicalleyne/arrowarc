@@ -17,7 +17,7 @@
 //go:build go1.18
 // +build go1.18
 
-package integrations
+package experiments
 
 import (
 	"database/sql"

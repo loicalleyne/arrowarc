@@ -27,76 +27,60 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
-package main
+package integrations
 
 import (
-	"flag"
+	"context"
 	"fmt"
-	"log"
-	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 
 	"github.com/apache/arrow/go/v17/arrow/flight"
-	"github.com/apache/arrow/go/v17/arrow/flight/flightsql"
-	sqllite "github.com/arrowarc/arrowarc/experiments/flightsql/sqllite"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/metadata"
 )
 
-func main() {
-	var (
-		host = flag.String("host", "localhost", "hostname to bind to")
-		port = flag.Int("port", 12345, "port to bind to")
-	)
+// Middleware to add headers for each request
+type ServerMiddlewareAddHeader struct{}
 
-	flag.Parse()
+func (s *ServerMiddlewareAddHeader) StartCall(ctx context.Context) context.Context {
+	grpc.SetHeader(ctx, metadata.Pairs("foo", "bar"))
+	return ctx
+}
 
-	// Create the in-memory SQLite database
-	db, err := sqllite.CreateDB()
+func (s *ServerMiddlewareAddHeader) CallCompleted(ctx context.Context, err error) {
+	grpc.SetTrailer(ctx, metadata.Pairs("super", "duper"))
 	if err != nil {
-		log.Fatalf("Failed to create SQLite database: %v", err)
+		panic("error detected during server call")
 	}
-	defer db.Close()
+}
 
-	// Create the SQLiteFlightSQL server
-	srv, err := sqllite.NewSQLiteFlightSQLServer(db)
-	if err != nil {
-		log.Fatalf("Failed to create FlightSQL server: %v", err)
+// StartServer initializes and starts the Flight SQL server with middleware
+func StartServer(address string, srv flight.FlightServer) error {
+	// Create middleware for the server
+	serverMiddleware := []flight.ServerMiddleware{
+		flight.CreateServerMiddleware(&ServerMiddlewareAddHeader{}),
 	}
 
-	// Create a new gRPC server
-	grpcServer := grpc.NewServer()
-
-	// Create a new FlightSQL service instance
-	flightServer := flightsql.NewFlightServer(srv)
-
-	// Register the Flight SQL service with the gRPC server
-	flight.RegisterFlightServiceServer(grpcServer, flightServer)
-
-	// Enable gRPC reflection
-	reflection.Register(grpcServer)
-
-	// Start listening on the specified address
-	listener, err := net.Listen("tcp", net.JoinHostPort(*host, strconv.Itoa(*port)))
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
+	// Initialize the server with middleware
+	server := flight.NewServerWithMiddleware(serverMiddleware)
+	server.Init(address)
+	server.RegisterFlightService(srv)
 
 	// Graceful shutdown handling
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		fmt.Printf("Starting SQLite Flight SQL Server on %s...\n", listener.Addr().String())
-		if err := grpcServer.Serve(listener); err != nil {
-			log.Fatalf("Failed to serve: %v", err)
+		fmt.Printf("Starting Flight SQL Server on %s...\n", address)
+		if err := server.Serve(); err != nil {
+			fmt.Printf("Server stopped with error: %v\n", err)
 		}
 	}()
 
 	<-stop
-	fmt.Println("\nShutting down SQLite Flight SQL Server gracefully...")
-	grpcServer.GracefulStop()
+	fmt.Println("Shutting down Flight SQL Server gracefully...")
+	server.Shutdown()
+	return nil
 }

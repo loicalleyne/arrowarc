@@ -34,7 +34,7 @@
 // correctly (specifically pragma_table_info) in go 1.18+ so this
 // entire package is given the build constraint to only build when
 // using go1.18 or higher
-package integrations
+package experiments
 
 import (
 	"bytes"

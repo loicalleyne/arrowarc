@@ -32,7 +32,6 @@ package utils
 import (
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"sync"
 
@@ -56,7 +55,8 @@ func PrintRecordBatch(record arrow.Record) error {
 		if field.Name == "" || field.Type == nil {
 			return fmt.Errorf("invalid schema at column %d: field name or type is missing", i)
 		}
-		fmt.Printf("Column %d: %s, Type: %s\n", i, field.Name, field.Type)
+
+		fmt.Printf("Column %d: %s, Value:%v, Type: %s\n", i, field.Name, record.Column(i), field.Type)
 	}
 
 	for rowIndex := 0; rowIndex < numRows; rowIndex++ {
@@ -65,14 +65,6 @@ func PrintRecordBatch(record arrow.Record) error {
 			if column == nil {
 				fmt.Printf("Row %d, Column %d: Nil column data\n", rowIndex, colIndex)
 				continue
-			}
-			switch col := column.(type) {
-			case *array.String:
-				fmt.Printf("Row %d, Column %d: %s\n", rowIndex, colIndex, col.Value(rowIndex))
-			case *array.Float64:
-				fmt.Printf("Row %d, Column %d: %.2f\n", rowIndex, colIndex, col.Value(rowIndex))
-			default:
-				fmt.Printf("Row %d, Column %d: Unknown type %T\n", rowIndex, colIndex, column)
 			}
 		}
 	}
@@ -215,23 +207,3 @@ func ProcessStreams(readErrChan <-chan error, writeErrChan <-chan error) error {
 
 	return nil
 }
-
-type sliceReader struct {
-	records []arrow.Record
-	index   int
-}
-
-func (s *sliceReader) Read() (arrow.Record, error) {
-	if s.index >= len(s.records) {
-		return nil, io.EOF
-	}
-	rec := s.records[s.index]
-	s.index++
-	return rec, nil
-}
-
-// Utility functions to get pointer values
-func int64Ptr(i int64) *int64       { return &i }
-func float64Ptr(f float64) *float64 { return &f }
-func int32Ptr(i int32) *int32       { return &i }
-func stringPtr(s string) *string    { return &s }
