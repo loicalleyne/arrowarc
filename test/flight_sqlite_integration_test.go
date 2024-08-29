@@ -40,7 +40,7 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow/flight"
 	"github.com/apache/arrow/go/v17/arrow/flight/flightsql"
-	sqllite "github.com/arrowarc/arrowarc/integrations/flight/sqlite"
+	sqllite "github.com/arrowarc/arrowarc/integrations/flight/flightsql/sqlite"
 	"github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
