@@ -34,7 +34,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	bqStorage "cloud.google.com/go/bigquery/storage/apiv1"
@@ -47,7 +46,6 @@ import (
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type BigQueryReadClient struct {
@@ -101,6 +99,7 @@ func defaultBigQueryReadCallOptions() *BigQueryReadCallOptions {
 	}
 }
 
+// NewBigQueryReader creates a new BigQueryReader for the specified table
 func (bq *BigQueryReadClient) NewBigQueryReader(ctx context.Context, projectID, datasetID, tableID string) (*BigQueryReader, error) {
 	// Define the ArrowSerializationOptions with compression
 	arrowSerializationOptions := &storagepb.ArrowSerializationOptions{
@@ -168,124 +167,74 @@ type BigQueryReader struct {
 	schemaBytes []byte
 	streams     []*storagepb.ReadStream
 	mem         memory.Allocator
-
-	r    *ipc.Reader
-	buf  *bytes.Buffer
-	once sync.Once
+	stream      storagepb.BigQueryRead_ReadRowsClient
+	offset      int64
+	r           *ipc.Reader
+	buf         *bytes.Buffer
 }
 
+// Read reads the next record from the BigQuery stream
 func (r *BigQueryReader) Read() (arrow.Record, error) {
-	var err error
+	for {
+		if r.r != nil && r.r.Next() {
+			record := r.r.Record()
+			record.Retain()
+			return record, nil
+		}
 
-	// Ensure the IPC reader is properly initialized with the schema
-	r.once.Do(func() {
-		if r.r == nil {
-			r.buf.Write(r.schemaBytes)
-			r.r, err = ipc.NewReader(r.buf, ipc.WithAllocator(r.mem))
-			if err != nil {
-				err = fmt.Errorf("failed to create initial IPC reader for schema: %w", err)
+		response, err := r.readNextResponse()
+		if err != nil {
+			return nil, err
+		}
+
+		undecodedBatch := response.GetArrowRecordBatch().GetSerializedRecordBatch()
+		if len(undecodedBatch) > 0 {
+			if record, err := r.processRecordBatch(undecodedBatch); err != nil {
+				return nil, err
+			} else if record != nil {
+				return record, nil
 			}
 		}
-	})
-	if err != nil {
+	}
+}
+
+// readNextResponse reads the next response from the BigQuery stream
+func (r *BigQueryReader) readNextResponse() (*storagepb.ReadRowsResponse, error) {
+	if r.stream == nil {
+		if len(r.streams) == 0 {
+			return nil, io.EOF
+		}
+		var err error
+		r.stream, err = r.client.ReadRows(r.ctx, &storagepb.ReadRowsRequest{
+			ReadStream: r.streams[0].Name,
+			Offset:     r.offset,
+		}, r.callOptions.ReadRows...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create ReadRows stream: %w", err)
+		}
+	}
+
+	response, err := r.stream.Recv()
+	if err == io.EOF {
+		r.stream = nil
 		return nil, err
 	}
-
-	// Ensure there is at least one stream available
-	if len(r.streams) == 0 {
-		return nil, fmt.Errorf("no streams available")
+	if err != nil {
+		return nil, fmt.Errorf("error receiving stream response: %w", err)
 	}
 
-	// Create a channel to receive ReadRowsResponses
-	responseChan := make(chan *storagepb.ReadRowsResponse)
-	errorChan := make(chan error, 1)
-
-	// Launch a goroutine to read from the stream
-	go func() {
-		defer close(responseChan)
-		defer close(errorChan) // Close errorChan when done
-
-		if err := r.readFromStream(responseChan); err != nil {
-			errorChan <- err
-		}
-	}()
-
-	// Process responses from the channel
-	for {
-		select {
-		case response, ok := <-responseChan:
-			if !ok {
-				return nil, io.EOF // Channel closed, end of stream
-			}
-
-			// Handle Arrow record batches in the response
-			undecodedBatch := response.GetArrowRecordBatch().GetSerializedRecordBatch()
-			if len(undecodedBatch) > 0 {
-				record, err := r.processRecordBatch(undecodedBatch)
-				if err != nil {
-					return nil, err
-				}
-				if record != nil {
-					return record, nil
-				}
-			}
-		case err := <-errorChan:
-			return nil, err
-		case <-r.ctx.Done():
-			return nil, r.ctx.Err() // Handle context cancellation
-		}
-	}
+	r.offset += response.GetRowCount()
+	return response, nil
 }
 
-// Function for reading from the stream with retries
-func (r *BigQueryReader) readFromStream(responseChan chan<- *storagepb.ReadRowsResponse) error {
-	streamName := r.streams[0].Name
-	offset := int64(0)
-	retries := 0
-	retryLimit := 3
-
-	for retries < retryLimit {
-		stream, err := r.client.ReadRows(r.ctx, &storagepb.ReadRowsRequest{
-			ReadStream: streamName,
-			Offset:     offset,
-		}, r.callOptions.ReadRows...)
-
-		if err != nil {
-			return fmt.Errorf("failed to stream rows: %w", err)
-		}
-		defer stream.CloseSend()
-
-		for {
-			response, err := stream.Recv()
-			if err != nil {
-				if err == io.EOF || status.Code(err) == codes.Canceled || r.ctx.Err() != nil {
-					return io.EOF
-				}
-
-				if status.Code(err) == codes.ResourceExhausted {
-					retryDelay := time.Duration(2<<retries) * time.Second
-					time.Sleep(retryDelay)
-					retries++
-					break // Retry the entire loop
-				}
-				return fmt.Errorf("error receiving stream response: %w", err)
-			}
-			responseChan <- response
-
-			// Update offset to keep track of where we are in the stream
-			offset += response.GetRowCount()
-		}
-	}
-	return fmt.Errorf("retries exhausted, no more records to read")
-}
-
+// Process a batch of records and create an Arrow record
 func (r *BigQueryReader) processRecordBatch(undecodedBatch []byte) (arrow.Record, error) {
 	// Reset the buffer for the new batch
 	r.buf.Reset()
 	r.buf.Write(r.schemaBytes)
 	r.buf.Write(undecodedBatch)
 
-	// Re-create the IPC reader with the new buffer
+	// Create a new IPC reader with the updated buffer
 	var err error
 	r.r, err = ipc.NewReader(r.buf, ipc.WithAllocator(r.mem), ipc.WithSchema(r.r.Schema()))
 	if err != nil {
@@ -295,20 +244,21 @@ func (r *BigQueryReader) processRecordBatch(undecodedBatch []byte) (arrow.Record
 	// Read the first record in the current batch
 	if r.r.Next() {
 		record := r.r.Record()
-		record.Retain() // Retain record to ensure it stays valid
+		record.Retain() // Retain the record to ensure it stays valid
 		helper.PrintRecordBatch(record)
 		return record, nil
 	}
 
 	// Check for errors during record reading
-	if rErr := r.r.Err(); rErr != nil {
-		return nil, fmt.Errorf("error reading records: %w", rErr)
+	if rErr := r.r.Err(); rErr != nil && rErr != io.EOF {
+		return nil, fmt.Errorf("error reading record batch: %w", rErr)
 	}
 
 	// No records found in this batch
 	return nil, nil
 }
 
+// Close closes the BigQueryReader and releases resources
 func (r *BigQueryReader) Close() error {
 	defer memoryPool.PutAllocator(r.mem)
 	if r.r != nil {
@@ -317,6 +267,7 @@ func (r *BigQueryReader) Close() error {
 	return nil
 }
 
+// Schema returns the schema of the BigQueryReader
 func (r *BigQueryReader) Schema() (*arrow.Schema, error) {
 	// Ensure the IPC reader is initialized and schema is available
 	if r.r != nil {
