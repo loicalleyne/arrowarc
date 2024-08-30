@@ -70,7 +70,9 @@ func (o *ParquetReadOptions) toArrowReadProperties() pqarrow.ArrowReadProperties
 
 // NewDefaultParquetWriteOptions returns default write options for Parquet files.
 func NewDefaultParquetWriteOptions() pqarrow.ArrowWriterProperties {
-	return pqarrow.NewArrowWriterProperties()
+	return pqarrow.NewArrowWriterProperties(
+		pqarrow.WithStoreSchema(),
+	)
 }
 
 // NewDefaultParquetWriterProperties returns default writer properties.
@@ -79,6 +81,10 @@ func NewDefaultParquetWriterProperties() *parquet.WriterProperties {
 		parquet.WithCompression(compress.Codecs.Snappy),
 		parquet.WithBatchSize(64*1024*1024), // 64MB batch size
 		parquet.WithAllocator(pool.GetAllocator()),
+		parquet.WithVersion(parquet.V2_LATEST),
+		parquet.WithDataPageSize(1024*1024),
+		parquet.WithMaxRowGroupLength(64*1024*1024), // 64MB row group length
+		parquet.WithCreatedBy("ArrowArc"),
 	)
 }
 
