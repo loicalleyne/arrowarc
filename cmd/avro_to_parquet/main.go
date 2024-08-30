@@ -67,10 +67,6 @@ Options:
 	parquetFilePath, _ := arguments.String("--parquet")
 	chunkSize, _ := arguments.Int("--chunk-size")
 	compressionTypeStr, _ := arguments.String("--compression")
-	batchSize, _ := arguments.Int("--batch-size")
-	pageSize, _ := arguments.Int("--page-size")
-	rowGroupSize, _ := arguments.Int("--row-group-size")
-	parallelism, _ := arguments.Int("--parallelism")
 
 	// Map compression type to the appropriate constant
 	var compressionType compress.Compression
@@ -94,10 +90,6 @@ Options:
 		parquetFilePath,
 		chunkSize,
 		compressionType,
-		batchSize,
-		int64(pageSize),
-		int64(rowGroupSize),
-		parallelism,
 	)
 	if err != nil {
 		log.Fatalf("Failed to convert Avro to Parquet: %v", err)
