@@ -34,7 +34,6 @@ import (
 	"log"
 	"time"
 
-	"github.com/apache/arrow/go/v17/arrow"
 	converter "github.com/arrowarc/arrowarc/convert"
 	"github.com/docopt/docopt-go"
 )
@@ -67,22 +66,14 @@ Options:
 	hasHeader, _ := arguments.Bool("--header")
 	chunkSize, _ := arguments.Int("--chunk-size")
 	delimiter, _ := arguments.String("--delimiter")
-	nullValue, _ := arguments.String("--null")
 	stringsCanBeNull, _ := arguments.Bool("--strings-can-be-null")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	// Define the schema for the CSV file (customize based on actual CSV structure)
-	schema := arrow.NewSchema([]arrow.Field{
-		{Name: "id", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
-		{Name: "name", Type: arrow.BinaryTypes.String, Nullable: true},
-	}, nil)
-
-	err = converter.ConvertCSVToParquet(ctx, csvPath, parquetPath, schema, hasHeader, int64(chunkSize), rune(delimiter[0]), []string{nullValue}, stringsCanBeNull)
+	err = converter.ConvertCSVToParquet(ctx, csvPath, parquetPath, hasHeader, int64(chunkSize), rune(delimiter[0]), []string{}, stringsCanBeNull)
 	if err != nil {
 		log.Fatalf("Error converting CSV to Parquet: %v", err)
 	}
-
 	log.Println("CSV to Parquet conversion completed successfully")
 }

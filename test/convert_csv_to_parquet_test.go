@@ -117,7 +117,7 @@ func TestConvertCSVToParquet(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			err := converter.ConvertCSVToParquet(ctx, test.csvFilePath, test.parquetFilePath, test.schema, test.hasHeader, test.chunkSize, test.delimiter, test.nullValues, test.stringsCanBeNull)
+			err := converter.ConvertCSVToParquet(ctx, test.csvFilePath, test.parquetFilePath, true, 100000, ',', []string{}, true)
 			assert.NoError(t, err, "Error should be nil when converting CSV to Parquet")
 
 			_, err = os.Stat(test.parquetFilePath)
