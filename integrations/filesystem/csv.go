@@ -90,6 +90,7 @@ func NewCSVReader(ctx context.Context, filePath string, schema *arrow.Schema, op
 		csv.WithComma(opts.Delimiter),
 		csv.WithHeader(opts.HasHeader),
 		csv.WithNullReader(opts.StringsCanBeNull, opts.NullValues...),
+		csv.WithAllocator(alloc),
 	}
 
 	reader := csv.NewReader(file, schema, options...)
