@@ -1,9 +1,15 @@
 package main
 
 import (
-	"github.com/arrowarc/arrowarc/pkg/cli"
+	"fmt"
+	"os"
+
+	cli "github.com/arrowarc/arrowarc/internal/cli"
 )
 
 func main() {
-	cli.DisplayMenu()
+	if err := cli.RunMenu(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
 }
