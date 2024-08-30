@@ -39,35 +39,50 @@ import (
 	pq "github.com/arrowarc/arrowarc/pkg/parquet"
 )
 
-func ExecuteCommand(choice string) error {
-	switch choice {
+func Help() error {
+	fmt.Println("Help")
+	return nil
+}
+
+func ExecuteCommand(ctx context.Context, command string) error {
+	switch command {
 	case "Generate Parquet":
-		return generateParquet()
+		return GenerateParquet(ctx)
 	case "Parquet to CSV":
-		return parquetToCSV()
+		return ParquetToCSV(ctx)
 	case "CSV to Parquet":
-		return csvToParquet()
+		return CSVToParquet(ctx)
 	case "Parquet to JSON":
-		return parquetToJSON()
+		return ParquetToJSON(ctx)
 	case "Rewrite Parquet":
-		return rewriteParquet()
+		return RewriteParquet(ctx)
 	case "Run Flight Tests":
-		return runFlightTests()
+		return RunFlightTests(ctx)
 	case "Avro to Parquet":
-		return avroToParquet()
+		return AvroToParquet(ctx)
+	case "Help":
+		return Help()
+	case "Quit":
+		return nil
 	default:
-		return fmt.Errorf("unknown command: %s", choice)
+		return fmt.Errorf("invalid command")
 	}
 }
 
-func generateParquet() error {
+func GenerateParquet(ctx context.Context) error {
 	fmt.Print("Enter the path for the new Parquet file: ")
 	var path string
 	fmt.Scanln(&path)
-	return generator.GenerateParquetFile(path, 1000, true)
+	fmt.Print("Enter the target size in Bytes: ")
+	var targetSize int64
+	fmt.Scanln(&targetSize)
+	fmt.Print("Inclused Nested Fields? (y/n): ")
+	var complex bool
+	fmt.Scanln(&complex)
+	return generator.GenerateParquetFile(path, targetSize, complex)
 }
 
-func parquetToCSV() error {
+func ParquetToCSV(ctx context.Context) error {
 	fmt.Print("Enter the path of the Parquet file: ")
 	var parquetPath string
 	fmt.Scanln(&parquetPath)
@@ -77,7 +92,7 @@ func parquetToCSV() error {
 	return converter.ConvertParquetToCSV(context.Background(), parquetPath, csvPath, true, 100000, []string{}, []int{}, false, ',', false, "", nil, nil)
 }
 
-func csvToParquet() error {
+func CSVToParquet(ctx context.Context) error {
 	fmt.Print("Enter the path of the CSV file: ")
 	var csvPath string
 	fmt.Scanln(&csvPath)
@@ -87,7 +102,7 @@ func csvToParquet() error {
 	return converter.ConvertCSVToParquet(context.Background(), csvPath, parquetPath, true, 100000, ',', []string{}, true)
 }
 
-func parquetToJSON() error {
+func ParquetToJSON(ctx context.Context) error {
 	fmt.Print("Enter the path of the Parquet file: ")
 	var parquetPath string
 	fmt.Scanln(&parquetPath)
@@ -97,7 +112,7 @@ func parquetToJSON() error {
 	return converter.ConvertParquetToJSON(context.Background(), parquetPath, jsonPath, true, 100000, []string{}, []int{}, true, true)
 }
 
-func rewriteParquet() error {
+func RewriteParquet(ctx context.Context) error {
 	fmt.Print("Enter the path of the Parquet file to rewrite: ")
 	var inputPath string
 	fmt.Scanln(&inputPath)
@@ -107,13 +122,13 @@ func rewriteParquet() error {
 	return pq.RewriteParquetFile(context.Background(), inputPath, outputPath, true, 100000, []string{}, []int{}, true, nil)
 }
 
-func runFlightTests() error {
+func RunFlightTests(ctx context.Context) error {
 	fmt.Println("Running Arrow Flight tests...")
 	// Implement Arrow Flight tests here
 	return fmt.Errorf("arrow Flight tests not implemented yet")
 }
 
-func avroToParquet() error {
+func AvroToParquet(ctx context.Context) error {
 	fmt.Print("Enter the path of the Avro file: ")
 	var avroPath string
 	fmt.Scanln(&avroPath)

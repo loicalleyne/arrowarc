@@ -30,11 +30,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/arrowarc/arrowarc/internal/ui"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type item struct {
@@ -60,6 +62,7 @@ func initialModel() model {
 		item{title: "Rewrite Parquet", desc: "Rewrite a Parquet file"},
 		item{title: "Run Flight Tests", desc: "Execute Arrow Flight tests"},
 		item{title: "Avro to Parquet", desc: "Convert Avro to Parquet"},
+		item{title: "Help", desc: "Show help"},
 		item{title: "Quit", desc: "Exit the application"},
 	}
 
@@ -67,9 +70,27 @@ func initialModel() model {
 	l.Title = "ArrowArc Menu"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
-	l.Styles.Title = ui.TitleStyle
-	l.Styles.PaginationStyle = ui.PaginationStyle
-	l.Styles.HelpStyle = ui.HelpStyle
+
+	// Updated styles
+	l.Styles.Title = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#4CAF50")).
+		Bold(true).
+		Padding(0, 0, 1, 2)
+
+	l.Styles.PaginationStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#757575"))
+
+	l.Styles.HelpStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#BDBDBD"))
+
+	// Customize list item styles
+	customDelegate := list.NewDefaultDelegate()
+	customDelegate.Styles.SelectedTitle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#2196F3")).
+		Bold(true)
+	customDelegate.Styles.SelectedDesc = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#64B5F6"))
+	l.SetDelegate(customDelegate)
 
 	return model{list: l}
 }
@@ -110,6 +131,8 @@ func (m model) View() string {
 }
 
 func RunMenu() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for {
 		p := tea.NewProgram(initialModel())
 		m, err := p.Run()
@@ -126,7 +149,7 @@ func RunMenu() error {
 				return nil
 			}
 			if m.choice != "" {
-				err := ExecuteCommand(m.choice)
+				err := ExecuteCommand(ctx, m.choice)
 				if err != nil {
 					fmt.Printf("Error executing command: %v\n", err)
 				}
