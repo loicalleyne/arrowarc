@@ -27,6 +27,8 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Once the server is started, you can use the client example or connect via JDBC: jdbc:arrow-flight-sql://localhost:12345?useEncryption=false
+
 package main
 
 import (
@@ -69,16 +71,24 @@ Options:
 		log.Fatalf("Invalid address: %v", err)
 	}
 
-	// Start the server
-	go startFlightSQLServer(address)
+	// Start the server in the main goroutine
+	startFlightSQLServer(address)
 
-	// Perform handshake after a delay to ensure the server is up
-	time.Sleep(2 * time.Second)
-	if err := performHandshake(address); err != nil {
-		log.Fatalf("Error during handshake: %v", err)
-	}
+	// Run the client code in a separate goroutine to validate the server is up
+	go func() {
+		// Wait for a moment to allow the server to start
+		time.Sleep(2 * time.Second)
 
-	log.Println("Flight SQL Server is up and running at", address)
+		// Perform listFlights to check if the server is running
+		if err := listFlights(address); err != nil {
+			log.Fatalf("Error during listFlights: %v", err)
+		} else {
+			log.Println("Flight SQL Server is up and running at", address)
+		}
+	}()
+
+	// Prevent the main goroutine from exiting immediately
+	select {}
 }
 
 // validateAddress checks if the address is valid and has both a host and a port.
@@ -122,11 +132,14 @@ func startFlightSQLServer(address string) {
 	}
 
 	// Initialize the Flight server with middleware (if needed)
-	server := flight.NewServerWithMiddleware(nil)
+	server := flight.NewServerWithMiddleware(
+		[]flight.ServerMiddleware{},
+	)
 	server.Init(address)
 
 	// Register the Flight SQL service
-	server.RegisterFlightService(flightsql.NewFlightServer(srv))
+	flightSQLServer := flightsql.NewFlightServer(srv)
+	server.RegisterFlightService(flightSQLServer)
 
 	log.Printf("Starting Flight SQL server on %s...\n", address)
 
@@ -136,8 +149,8 @@ func startFlightSQLServer(address string) {
 	}
 }
 
-// performHandshake performs a simple client-server handshake to ensure the server is running
-func performHandshake(address string) error {
+// listFlights performs a simple client-server transaction to list flights
+func listFlights(address string) error {
 	// Initialize Flight client
 	client, err := flight.NewClientWithMiddleware(address, nil, nil, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -145,10 +158,14 @@ func performHandshake(address string) error {
 	}
 	defer client.Close()
 
-	// Send a simple ListFlights request as a handshake
+	// Send a ListFlights request to the server
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = client.ListFlights(ctx, &flight.Criteria{})
-	return err
+	flights, err := client.ListFlights(ctx, &flight.Criteria{})
+	if err != nil {
+		return err
+	}
+	fmt.Println("ListFlights response:", flights)
+	return nil
 }
