@@ -35,7 +35,6 @@ import (
 	"fmt"
 	"strings"
 
-	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
 	"github.com/arrowarc/arrowarc/pipeline"
 )
@@ -51,7 +50,7 @@ func ConvertParquetToCSV(
 ) error {
 	// Validate input parameters
 	if parquetFilePath == "" {
-		return errors.New("Parquet file path cannot be empty")
+		return errors.New("parquet file path cannot be empty")
 	}
 	if csvFilePath == "" {
 		return errors.New("CSV file path cannot be empty")
@@ -64,7 +63,7 @@ func ConvertParquetToCSV(
 	}
 
 	// Create Parquet reader
-	reader, err := filesystem.NewParquetReader(ctx, parquetFilePath, &filesystem.ParquetReadOptions{
+	reader, err := integrations.NewParquetReader(ctx, parquetFilePath, &integrations.ParquetReadOptions{
 		MemoryMap: memoryMap,
 		RowGroups: rowGroups,
 		Parallel:  parallel,
@@ -79,7 +78,7 @@ func ConvertParquetToCSV(
 	}()
 
 	// Create CSV writer
-	writer, err := filesystem.NewCSVWriter(ctx, csvFilePath, reader.Schema(), &integrations.CSVWriteOptions{
+	writer, err := integrations.NewCSVWriter(ctx, csvFilePath, reader.Schema(), &integrations.CSVWriteOptions{
 		Delimiter:       delimiter,
 		IncludeHeader:   includeHeader,
 		NullValue:       nullValue,

@@ -95,7 +95,7 @@ func RewriteParquetFile(
 		return fmt.Errorf("failed to rewrite Parquet file: %w", err)
 	}
 
-	fmt.Println(metrics.Report())
+	metrics.Report()
 
 	return nil
 }

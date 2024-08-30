@@ -43,7 +43,7 @@ func main() {
 	usage := `Avro to Parquet Converter.
 
 Usage:
-  avro_to_parquet --avro=<avro_file> --parquet=<parquet_file> [--chunk-size=<bytes>] [--compression=<type>] [--batch-size=<rows>] [--page-size=<bytes>] [--row-group-size=<bytes>] [--parallelism=<threads>]
+  avro_to_parquet --avro=<avro_file> --parquet=<parquet_file> [--chunk-size=<bytes>] [--compression=<type>]
   avro_to_parquet -h | --help
 
 Options:
@@ -52,10 +52,6 @@ Options:
   --parquet=<parquet_file>                  Path to the output Parquet file.
   --chunk-size=<bytes>                      Number of bytes to read per chunk [default: 8192].
   --compression=<type>                      Compression type to use (e.g., none, snappy, gzip) [default: snappy].
-  --batch-size=<rows>                       Number of rows to process in each batch [default: 8192].
-  --page-size=<bytes>                       Data page size in bytes [default: 1048576].
-  --row-group-size=<bytes>                  Maximum row group size in bytes [default: 67108864].
-  --parallelism=<threads>                   Number of parallel threads to use [default: 4].
 `
 
 	arguments, err := docopt.ParseDoc(usage)
@@ -75,6 +71,10 @@ Options:
 		compressionType = compress.Codecs.Snappy
 	case "gzip":
 		compressionType = compress.Codecs.Gzip
+	case "brotli":
+		compressionType = compress.Codecs.Brotli
+	case "zstd":
+		compressionType = compress.Codecs.Zstd
 	case "none":
 		compressionType = compress.Codecs.Uncompressed
 	default:
