@@ -58,6 +58,7 @@ func initialModel() model {
 		item{title: "Generate Parquet", desc: "Generate a new Parquet file"},
 		item{title: "Parquet to CSV", desc: "Convert Parquet to CSV"},
 		item{title: "CSV to Parquet", desc: "Convert CSV to Parquet"},
+		item{title: "CSV to JSON", desc: "Convert CSV to JSON"},
 		item{title: "Parquet to JSON", desc: "Convert Parquet to JSON"},
 		item{title: "Rewrite Parquet", desc: "Rewrite a Parquet file"},
 		item{title: "Run Flight Tests", desc: "Execute Arrow Flight tests"},

@@ -46,7 +46,10 @@ p.Report()
 | Transport Table     | ✅     |
 | Rewrite Parquet     | ✅     |
 | Generate Parquet    | ✅     |
+| Generate IPC        | ✅     |
+| Avro To Parquet     | ✅     |
 | CSV To Parquet      | ✅     |
+| CSV To JSON         | ✅     |
 | JSON To Parquet     | ✅     |
 | Parquet to CSV      | ✅     |
 | Parquet to JSON     | ✅     |

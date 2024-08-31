@@ -40,7 +40,16 @@ import (
 )
 
 func Help() error {
-	fmt.Println("Help")
+	fmt.Println("ArrowArc CLI")
+	fmt.Println("Commands:")
+	fmt.Println("  Generate Parquet - Generate a new Parquet file")
+	fmt.Println("  Parquet to CSV - Convert a Parquet file to CSV")
+	fmt.Println("  CSV to Parquet - Convert a CSV file to Parquet")
+	fmt.Println("  Parquet to JSON - Convert a Parquet file to JSON")
+	fmt.Println("  Rewrite Parquet - Rewrite a Parquet file")
+	fmt.Println("  Run Flight Tests - Run Arrow Flight tests")
+	fmt.Println("  Avro to Parquet - Convert an Avro file to Parquet")
+	fmt.Println("  CSV to JSON - Convert a CSV file to JSON")
 	return nil
 }
 
@@ -60,6 +69,8 @@ func ExecuteCommand(ctx context.Context, command string) error {
 		return RunFlightTests(ctx)
 	case "Avro to Parquet":
 		return AvroToParquet(ctx)
+	case "CSV to JSON":
+		return CSVToJSON(ctx)
 	case "Help":
 		return Help()
 	case "Quit":
@@ -100,6 +111,16 @@ func CSVToParquet(ctx context.Context) error {
 	var parquetPath string
 	fmt.Scanln(&parquetPath)
 	return converter.ConvertCSVToParquet(context.Background(), csvPath, parquetPath, true, 100000, ',', []string{}, true)
+}
+
+func CSVToJSON(ctx context.Context) error {
+	fmt.Print("Enter the path of the CSV file: ")
+	var csvPath string
+	fmt.Scanln(&csvPath)
+	fmt.Print("Enter the path for the output JSON file: ")
+	var jsonPath string
+	fmt.Scanln(&jsonPath)
+	return converter.ConvertCSVToJSON(context.Background(), csvPath, jsonPath, true, 100000, ',', []string{}, true)
 }
 
 func ParquetToJSON(ctx context.Context) error {
