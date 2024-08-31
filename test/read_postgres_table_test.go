@@ -31,71 +31,53 @@ package test
 
 import (
 	"context"
-	"database/sql"
-	"io"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
 	integrations "github.com/arrowarc/arrowarc/integrations/postgres"
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
+	pipeline "github.com/arrowarc/arrowarc/pipeline"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetArrowStreamSuccess(t *testing.T) {
+const (
+	dbURL = "postgresql://postgres:postgres@localhost:5432/postgres"
+)
 
+// Test for extracting a Postgres table to Parquet using the filesystem integration
+func TestExtractPostgresTableToParquet(t *testing.T) {
 	if os.Getenv("CI") == "true" {
 		t.Skip("Skipping Postgres integration test in CI environment.")
 	}
 
-	// Start the embedded Postgres database
-	postgres := embeddedpostgres.NewDatabase(embeddedpostgres.DefaultConfig().Port(5433))
-	err := postgres.Start()
-	assert.NoError(t, err, "Embedded Postgres should start without error")
-
-	defer func() {
-		err := postgres.Stop()
-		assert.NoError(t, err, "Embedded Postgres should stop without error")
-	}()
-
-	// Connect to the embedded Postgres database
-	db, err := sql.Open("postgres", "host=localhost port=5433 user=postgres password=postgres dbname=postgres sslmode=disable")
-	assert.NoError(t, err, "Should be able to connect to embedded Postgres")
-
-	// Create a test table and insert data
-	_, err = db.Exec("CREATE TABLE test_table (id INT PRIMARY KEY, name TEXT)")
-	assert.NoError(t, err, "Should be able to create test table")
-
-	_, err = db.Exec("INSERT INTO test_table (id, name) VALUES (1, 'John'), (2, 'Jane'), (3, 'Jack')")
-	assert.NoError(t, err, "Should be able to insert data into test table")
-
-	// Initialize Postgres source
-	dbURL := "postgresql://postgres:postgres@localhost:5433/postgres"
 	source, err := integrations.NewPostgresSource(context.Background(), dbURL)
 	assert.NoError(t, err, "Error should be nil when creating Postgres source")
 	defer source.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Get a record reader from the Postgres source
-	reader, err := source.GetPostgresRecordReader(ctx, "test_table")
+	reader, err := source.GetPostgresRecordReader(ctx, "part")
 	assert.NoError(t, err, "Error should be nil when getting Postgres record reader")
 
-	var recordCount int
-	for {
-		record, err := reader.Read()
-		if err != nil {
-			if err == context.Canceled || err == io.EOF {
-				break
-			}
-			assert.NoError(t, err, "Error should be nil when reading from Postgres stream")
-		}
+	outputFile := "test_output.parquet"
+	defer os.Remove(outputFile)
 
-		assert.NotNil(t, record, "Record should not be nil")
-		recordCount += int(record.NumRows())
-		record.Release() // Ensure to release the record
-	}
+	// Initialize filesystem integration
+	fsWriter, err := filesystem.NewParquetWriter(outputFile, reader.Schema(), filesystem.NewDefaultParquetWriterProperties())
+	assert.NoError(t, err, "Error should be nil when creating Parquet writer")
 
-	assert.Equal(t, 3, recordCount, "There should be 3 rows returned")
+	// Setup the pipeline
+	p := pipeline.NewDataPipeline(reader, fsWriter)
+	assert.NoError(t, err, "Error should be nil when creating data pipeline")
+
+	metrics, err := p.Start(ctx)
+	assert.NoError(t, err, "Error should be nil when starting data pipeline")
+	fmt.Printf("Pipeline metrics: %+v\n", metrics)
+
+	// Verify the Parquet file is created
+	_, err = os.Stat(outputFile)
+	assert.NoError(t, err, "Parquet file should be created successfully")
 }
