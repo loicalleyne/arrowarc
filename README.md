@@ -1,40 +1,26 @@
-![Alt text](assets/images/ArrowArcLogo.png)
+# ArrowArc
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/arrowarc/arrowarc)](https://goreportcard.com/report/github.com/arrowarc/arrowarc) [![ArrowArc Build](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml/badge.svg)](https://github.com/arrowarc/arrowarc/actions/workflows/ci.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/arrowarc/arrowarc@v0.1.0.svg)](https://pkg.go.dev/github.com/arrowarc/arrowarc@v0.1.0)
 
-**Welcome to ArrowArc**—a passion-driven project designed to push the boundaries of data processing speed on modern hardware. ArrowArc isn't here to rival the giants of Big Data; instead, it’s an exploration of how efficiently data can be moved and processed using Go and Apache Arrow, leveraging today's powerful tools.
-
----
-
-## Why Go and Apache Arrow?
-
-I love working with Go for its elegance and powerful concurrency features. Combine that with Apache Arrow, which is optimized for in-memory data processing, and you have a recipe for high-performance data manipulation. ArrowArc gets data into Arrow format as quickly as possible and keeps it there, allowing for efficient, low-latency processing.
-
----
-
-## Zero-Code Configuration
-
-ArrowArc is built with simplicity in mind. It's designed to be entirely configurable, so you can set it up and let it run—no coding required to sync or transport your data. Just define your configuration, and ArrowArc takes care of the rest (theoretically).
-
----
-
-## Utility Functions
-
-ArrowArc also includes several utility functions that originated from my own need for integration testing. You're find utilities to generate various file formats on the fly, use embedded postgres and more.
-
----
+ArrowArc is an experimental data transport mechanism that uses Apache Arrow for high-performance data manipulation. It is designed to be a zero-code, zero-config, and zero-maintenance data transport mechanism.
 
 ## Getting Started
 
-ArrowArc is still very much a work in progress, but if you’re like me and enjoy experimenting with data processing, I’d love to hear from you.
+You have several options to use ArrowArc:
 
-### Example: Streaming Data from Bigquery and Writing to DuckDB
+1. Use the command line utilities to transport data.
+2. Use the library in your Go program.
+3. Use a YAML configuration file to define your data pipelines.
 
-Here’s a quick example of setting up a pipeline in ArrowArc to transport data from BigQuery to DuckDB.
+### Command Line Utilities
+
+Use the `arrowarc` command to get started. It will display a help menu with available commands, including demos and benchmarks.
+
+### Go Library
+
+Example of setting up a pipeline to transport data from BigQuery to DuckDB:
 
 ```go
-ctx := context.Background()
-
 // Setup the BigQuery client and reader
 bq, err := integrations.NewBigQueryReadClient(ctx)
 reader, err := bq.NewBigQueryReader(ctx, projectID, datasetID, tableID)
@@ -44,79 +30,65 @@ duck, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)
 writer, err := integrations.NewDuckDBRecordWriter(ctx, duck, tableID)
 
 // Create and start the data pipeline
-p := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+p, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+// Print the Transport Report
+p.Report()
 ```
 
 ---
 
-### ArrowArc Feature Matrix
+## Features
 
-I’m actively working on adding new features and integrations. Here’s where things stand:
+### CLI Utilities
 
-- `✅` - Implemented
-- `🚧` - In Progress
-- `❌` - Not Started
+| Utility             | Status |
+|---------------------|--------|
+| Transport Table     | ✅     |
+| Rewrite Parquet     | ✅     |
+| Generate Parquet    | ✅     |
+| CSV To Parquet      | ✅     |
+| JSON To Parquet     | ✅     |
+| Parquet to CSV      | ✅     |
+| Parquet to JSON     | ✅     |
+| Flight Server       | ✅     |
+| Sync Table          | ❌     |
+| Validate Table      | ❌     |
 
----
+### Integrations
 
-### Command Line Utilities
+#### Database Integrations
 
-| Utility             | Status       |
-|---------------------|--------------|
-| **Transport**       | ✅           |
-| **Sync Table**      | ❌           |
-| **Validate Table**  | ❌           |
-| **Rewrite Parquet** | ✅           |
-| **Generate Parquet**| ✅           |
-| **CSV To Parquet**  | ✅           |
-| **JSON To Parquet** | ✅           |
-| **Parquet to CSV**  | ✅           |
-| **Parquet to JSON** | ✅           |
-| **Flight Server**   | ✅             |
+| Database    | Extraction | Ingestion |
+|-------------|------------|-----------|
+| PostgreSQL  | ✅         | 🚧        |
+| BigQuery    | ✅         | 🚧        |
+| DuckDB      | ✅         | ✅        |
+| Spanner     | ✅         | ❌        |
+| CockroachDB | ✅         | 🚧        |
+| MySQL       | 🚧         | ❌        |
+| Oracle      | ❌         | ❌        |
+| Snowflake   | ❌         | ❌        |
+| SQLite      | ❌         | ❌        |
+| Flight      | ❌         | ❌        |
 
----
+#### Cloud Storage Integrations
 
-### Integration Types
+| Provider                       | Extraction | Ingestion |
+|--------------------------------|------------|-----------|
+| Google Cloud Storage (GCS)     | ✅         | ✅        |
+| Amazon S3                      | ❌         | ❌        |
+| Azure Blob Storage             | ❌         | ❌        |
 
-#### 1. Database Integrations
+#### Filesystem Formats
 
-| Database        | Extraction | Ingestion |
-|-----------------|------------|-----------|
-| **PostgreSQL**  | ✅         | 🚧        |
-| **MySQL**       | 🚧         | ❌        |
-| **Oracle**      | ❌         | ❌        |
-| **BigQuery**    | ✅         | 🚧        |
-| **Snowflake**   | ❌         | ❌        |
-| **DuckDB**      | ✅         | ✅        |
-| **SQLite**      | ❌         | ❌        |
-| **Spanner**     | ✅         | ❌        |
-| **CockroachDB** | ✅         | 🚧        |
-| **Flight**      | ❌         | ❌        |
-
----
-
-#### 2. Cloud Storage Integrations
-
-| Provider                         | Extraction | Ingestion |
-|----------------------------------|------------|-----------|
-| **Google Cloud Storage (GCS)**   | ✅         | ✅        |
-| **Amazon S3**                    | ❌         | ❌        |
-| **Azure Blob Storage**           | ❌         | ❌        |
-
----
-
-#### 3. Filesystem Formats
-
-| Format        | Extraction | Ingestion |
-|---------------|------------|-----------|
-| **Parquet**   | ✅         | ✅        |
-| **Avro**      | ✅         | ❌        |
-| **CSV**       | ✅         | ✅        |
-| **JSON**      | ✅         | ✅        |
-| **IPC**       | ✅         | ✅        |
-| **Iceberg**   | ✅         | ❌        |
-
----
+| Format    | Extraction | Ingestion |
+|-----------|------------|-----------|
+| Parquet   | ✅         | ✅        |
+| Avro      | ✅         | ❌        |
+| CSV       | ✅         | ✅        |
+| JSON      | ✅         | ✅        |
+| IPC       | ✅         | ✅        |
+| Iceberg   | ✅         | ❌        |
 
 ## Contributing
 

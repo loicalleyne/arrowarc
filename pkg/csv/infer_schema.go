@@ -110,6 +110,18 @@ func inferColumnType(currentType arrow.DataType, value string, opts *CSVReadOpti
 		}
 	}
 
+	if _, err := strconv.ParseInt(value, 10, 64); err == nil {
+		if currentType == nil || currentType.ID() == arrow.STRING {
+			return arrow.PrimitiveTypes.Int64
+		}
+	}
+
+	if _, err := strconv.ParseUint(value, 10, 64); err == nil {
+		if currentType == nil || currentType.ID() == arrow.STRING {
+			return arrow.PrimitiveTypes.Uint64
+		}
+	}
+
 	if _, err := strconv.ParseFloat(value, 64); err == nil {
 		if currentType == nil || currentType.ID() == arrow.STRING || currentType.ID() == arrow.PrimitiveTypes.Int64.ID() {
 			return arrow.PrimitiveTypes.Float64
@@ -134,7 +146,11 @@ func inferColumnType(currentType arrow.DataType, value string, opts *CSVReadOpti
 		}
 	}
 
-	return arrow.BinaryTypes.String // Default to string if no other types match
+	if currentType == nil {
+		currentType = arrow.BinaryTypes.String
+	}
+
+	return currentType
 }
 
 // Helper functions for type detection
