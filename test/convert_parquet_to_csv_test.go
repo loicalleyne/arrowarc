@@ -37,17 +37,21 @@ import (
 	"time"
 
 	converter "github.com/arrowarc/arrowarc/convert"
+	generator "github.com/arrowarc/arrowarc/generator"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestConvertParquetToCSV(t *testing.T) {
 
-	parquetFilePath := "/Users/thomasmcgeehan/ArrowArc/arrowarc/data/parquet/part.parquet"
+	parquetFilePath := "sample.parquet"
 	csvFilePathWithHeader := "output_test_with_header.csv"
 	csvFilePathWithoutHeader := "output_test_without_header.csv"
 
+	err := generator.GenerateParquetFile(parquetFilePath, 100*1024, false) // 100 KB, simple structure
+	assert.NoError(t, err, "Error should be nil when generating Parquet file")
+
 	t.Cleanup(func() {
-		//os.Remove(parquetFilePath)
+		os.Remove(parquetFilePath)
 		os.Remove(csvFilePathWithHeader)
 		os.Remove(csvFilePathWithoutHeader)
 	})
