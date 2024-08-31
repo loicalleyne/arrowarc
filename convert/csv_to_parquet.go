@@ -36,8 +36,10 @@ import (
 
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
 	"github.com/arrowarc/arrowarc/pipeline"
+	csv "github.com/arrowarc/arrowarc/pkg/csv"
 )
 
+// ConvertCSVToParquet converts a CSV file to a Parquet file using Arrow
 func ConvertCSVToParquet(
 	ctx context.Context,
 	csvFilePath, parquetFilePath string,
@@ -61,8 +63,19 @@ func ConvertCSVToParquet(
 		return errors.New("context cannot be nil")
 	}
 
-	// Setup CSV reader
-	csvReader, err := integrations.NewCSVReader(ctx, csvFilePath, nil, &integrations.CSVReadOptions{
+	// Step 1: Infer schema from the CSV file
+	schema, err := csv.InferCSVArrowSchema(ctx, csvFilePath, &csv.CSVReadOptions{
+		HasHeader:        hasHeader,
+		Delimiter:        delimiter,
+		NullValues:       nullValues,
+		StringsCanBeNull: stringsCanBeNull,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to infer schema: %w", err)
+	}
+
+	// Step 2: Create CSV reader with the inferred schema
+	csvReader, err := integrations.NewCSVReader(ctx, csvFilePath, schema, &integrations.CSVReadOptions{
 		HasHeader:        hasHeader,
 		ChunkSize:        chunkSize,
 		Delimiter:        delimiter,
@@ -70,15 +83,12 @@ func ConvertCSVToParquet(
 		StringsCanBeNull: stringsCanBeNull,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create CSV reader for file '%s': %w", csvFilePath, err)
+		return fmt.Errorf("failed to create CSV reader: %w", err)
 	}
+	defer csvReader.Close()
 
-	// Setup Parquet writer properties
+	// Step 3: Setup Parquet writer with the inferred schema
 	parquetWriterProps := integrations.NewDefaultParquetWriterProperties()
-
-	schema := csvReader.Schema()
-
-	// Setup Parquet writer
 	parquetWriter, err := integrations.NewParquetWriter(parquetFilePath, schema, parquetWriterProps)
 	if err != nil {
 		return fmt.Errorf("failed to create Parquet writer for file '%s': %w", parquetFilePath, err)
@@ -89,7 +99,7 @@ func ConvertCSVToParquet(
 		}
 	}()
 
-	// Setup and start pipeline
+	// Step 4: Setup and start the pipeline for conversion
 	metrics, err := pipeline.NewDataPipeline(csvReader, parquetWriter).Start(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to convert CSV to Parquet: %w", err)
