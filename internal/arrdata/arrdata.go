@@ -1822,8 +1822,9 @@ func MakeRegionRecords() []arrow.Record {
 
 	// Define the schema
 	schema := arrow.NewSchema([]arrow.Field{
-		{Name: "regionkey", Type: arrow.PrimitiveTypes.Int64},
-		{Name: "name", Type: arrow.BinaryTypes.String},
+		{Name: "r_regionkey", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "r_name", Type: arrow.BinaryTypes.String},
+		{Name: "r_comment", Type: arrow.BinaryTypes.String},
 	}, nil)
 
 	// Create regionkey array
@@ -1836,15 +1837,22 @@ func MakeRegionRecords() []arrow.Record {
 	defer nameBldr.Release()
 	nameBldr.AppendValues([]string{"Region1", "Region2", "Region3"}, nil)
 
+	// Create comment array
+	commentBldr := array.NewStringBuilder(pool)
+	defer commentBldr.Release()
+	commentBldr.AppendValues([]string{"Comment1", "Comment2", "Comment3"}, nil)
+
 	// Create the arrays
 	regionkeyArray := regionkeyBldr.NewArray()
 	nameArray := nameBldr.NewArray()
+	commentArray := commentBldr.NewArray()
 
 	defer regionkeyArray.Release()
 	defer nameArray.Release()
+	defer commentArray.Release()
 
 	// Ensure the arrays have the correct length
-	if regionkeyArray.Len() != nameArray.Len() {
+	if regionkeyArray.Len() != nameArray.Len() || regionkeyArray.Len() != commentArray.Len() {
 		panic("Array lengths do not match")
 	}
 
@@ -1852,6 +1860,7 @@ func MakeRegionRecords() []arrow.Record {
 	cols := []arrow.Array{
 		regionkeyArray,
 		nameArray,
+		commentArray,
 	}
 
 	record := array.NewRecord(schema, cols, int64(regionkeyArray.Len()))
