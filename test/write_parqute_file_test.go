@@ -101,14 +101,19 @@ func TestWriteParquetFileStream(t *testing.T) {
 			writer, err := integrations.NewParquetWriter(test.outputFilePath, reader.Schema(), integrations.NewDefaultParquetWriterProperties())
 			require.NoError(t, err, "Error should be nil when creating Parquet writer")
 
-			// Setup the pipeline to write the records to the Parquet file
-			metrics, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+			// Create a new pipeline
+			pipeline := pipeline.NewDataPipeline(reader, writer)
+
+			// Start the pipeline
+			metrics, err := pipeline.Start(ctx)
 			require.NoError(t, err, "Error should be nil when starting data pipeline")
 			require.NotNil(t, metrics, "Metrics should not be nil")
 
+			// Wait for the pipeline to finish
+			<-ctx.Done()
+
 			// Print the metrics report
 			t.Log(metrics)
-
 			t.Cleanup(func() {
 				os.Remove(test.outputFilePath)
 			})
