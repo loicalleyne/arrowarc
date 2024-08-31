@@ -120,6 +120,26 @@ You can expect a report similar to this:
 | IPC       | ✅         | ✅        |
 | Iceberg   | ✅         | ❌        |
 
+## Benchmarks
+
+I'll add more benchmarks as I stabilize the library.
+
+### Postgres to Parquet
+
+Transport 4 million records from Postgres to Parquet in under 3 seconds.
+
+```json
+Pipeline metrics: {
+  "EndTime": "2024-08-31T13:10:57-05:00",
+  "RecordsProcessed": 4000000,
+  "StartTime": "2024-08-31T13:10:54-05:00",
+  "Throughput": "1337039.12 records/second",
+  "ThroughputBytes": "172.16 MB/second",
+  "TotalBytes": "515.05 MB",
+  "TotalDuration": "2.992s"
+}
+```
+
 ## Contributing
 
 We welcome all [contributions](./CONTRIBUTING.md). Please see the [Code of Conduct](./CODE_OF_CONDUCT.md).
