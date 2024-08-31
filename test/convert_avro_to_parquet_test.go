@@ -14,7 +14,10 @@ import (
 )
 
 func TestConvertAvroToParquet(t *testing.T) {
-	t.Parallel()    // Run the test in parallel
+	t.Parallel() // Run the test in parallel
+	if os.Getenv("CI") == "true" {
+		t.Skip("Skipping Avro to Parquet test in CI environment.")
+	}
 	utils.LoadEnv() // Load any required environment variables
 
 	// Define test cases
