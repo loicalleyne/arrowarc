@@ -21,6 +21,7 @@ Use the `arrowarc` command to get started. It will display a help menu with avai
 Example of setting up a pipeline to transport data from BigQuery to DuckDB:
 
 ```go
+
 // Setup the BigQuery client and reader
 bq, err := integrations.NewBigQueryReadClient(ctx)
 reader, err := bq.NewBigQueryReader(ctx, projectID, datasetID, tableID)
@@ -39,7 +40,9 @@ if err != nil {
 }
 
 // Wait for the pipeline to finish
-<-p.Done()
+if pipelineErr := <-p.Done(); pipelineErr != nil {
+    return "", fmt.Errorf("pipeline encountered an error: %w", pipelineErr)
+}
 
 // Print the Transport Report
 fmt.Println(p.Report())
