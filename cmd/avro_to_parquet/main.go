@@ -31,6 +31,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -84,16 +85,16 @@ Options:
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	err = converter.ConvertAvroToParquet(
+	metrics, err := converter.ConvertAvroToParquet(
 		ctx,
 		avroFilePath,
 		parquetFilePath,
-		chunkSize,
+		int64(chunkSize),
 		compressionType,
 	)
 	if err != nil {
 		log.Fatalf("Failed to convert Avro to Parquet: %v", err)
 	}
 
-	log.Println("Successfully converted Avro to Parquet")
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
 }

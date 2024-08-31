@@ -31,6 +31,7 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -97,8 +98,9 @@ func TestConvertParquetToJSON(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			err := converter.ConvertParquetToJSON(ctx, test.parquetFilePath, test.jsonFilePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel, test.includeStructs)
+			metrics, err := converter.ConvertParquetToJSON(ctx, test.parquetFilePath, test.jsonFilePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel, test.includeStructs)
 			assert.NoError(t, err, "Error should be nil when converting Parquet to JSON")
+			fmt.Printf("Conversion completed. Summary: %s\n", metrics)
 
 			_, err = os.Stat(test.jsonFilePath)
 			assert.NoError(t, err, "JSON file should be created")

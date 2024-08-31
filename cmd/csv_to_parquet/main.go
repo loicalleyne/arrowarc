@@ -31,6 +31,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -71,9 +72,9 @@ Options:
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	err = converter.ConvertCSVToParquet(ctx, csvPath, parquetPath, hasHeader, int64(chunkSize), rune(delimiter[0]), []string{}, stringsCanBeNull)
+	metrics, err := converter.ConvertCSVToParquet(ctx, csvPath, parquetPath, hasHeader, int64(chunkSize), rune(delimiter[0]), []string{}, stringsCanBeNull)
 	if err != nil {
 		log.Fatalf("Error converting CSV to Parquet: %v", err)
 	}
-	log.Println("CSV to Parquet conversion completed successfully")
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
 }

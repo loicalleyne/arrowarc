@@ -31,6 +31,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -91,12 +92,12 @@ Options:
 		intRowGroupsList[i] = intRowGroup
 	}
 
-	err = converter.ConvertParquetToCSV(ctx, parquetPath, csvPath, memoryMap, int64(chunkSize), columnsList, intRowGroupsList, parallel, rune(delimiter[0]), includeHeader, nullValue, nil, nil)
+	metrics, err := converter.ConvertParquetToCSV(ctx, parquetPath, csvPath, memoryMap, int64(chunkSize), columnsList, intRowGroupsList, parallel, rune(delimiter[0]), includeHeader, nullValue, nil, nil)
 	if err != nil {
 		log.Fatalf("Error converting Parquet to CSV: %v", err)
 	}
 
-	log.Println("Parquet to CSV conversion completed successfully")
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
 }
 
 func parseCommaSeparatedList(input string) []string {

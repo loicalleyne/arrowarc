@@ -96,13 +96,16 @@ func ConvertParquetToCSV(
 
 	// Setup pipeline
 	p := pipeline.NewDataPipeline(reader, writer)
-	if err != nil {
-		return "", fmt.Errorf("failed to convert Parquet to CSV: %w", err)
+
+	// Start the pipeline and wait for completion
+	metrics, startErr := p.Start(ctx)
+	if startErr != nil {
+		return "", fmt.Errorf("failed to start conversion pipeline: %w", startErr)
 	}
 
-	metrics, err := p.Start(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to convert Parquet to CSV: %w", err)
+	// Wait for the pipeline to finish
+	if pipelineErr := <-p.Done(); pipelineErr != nil {
+		return "", fmt.Errorf("pipeline encountered an error: %w", pipelineErr)
 	}
 
 	return metrics, nil

@@ -30,44 +30,45 @@
 package convert
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"time"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/avro"
 	"github.com/apache/arrow/go/v17/parquet/compress"
-	pq "github.com/apache/arrow/go/v17/parquet/pqarrow"
-	filesystem "github.com/arrowarc/arrowarc/integrations/filesystem"
+	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
+	"github.com/arrowarc/arrowarc/pipeline"
 )
 
 // ConvertAvroToParquet converts an Avro OCF file to a Parquet file.
-func ConvertAvroToParquet(ctx context.Context, avroPath, parquetPath string, chunkSize int, compression compress.Compression) error {
+func ConvertAvroToParquet(ctx context.Context, avroPath, parquetPath string, chunkSize int64, compression compress.Compression) (string, error) {
 	if err := validateInputs(ctx, avroPath, parquetPath, chunkSize); err != nil {
-		return err
+		return "", err
 	}
 
-	avroReader, err := createAvroReader(avroPath, chunkSize)
+	avroReader, err := integrations.NewAvroReader(ctx, avroPath, &integrations.AvroReadOptions{
+		ChunkSize: chunkSize,
+	})
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer avroReader.Release()
+	defer avroReader.Close()
 
-	parquetWriter, err := createParquetWriter(parquetPath, avroReader.Schema())
+	parquetWriter, err := integrations.NewParquetWriter(parquetPath, avroReader.Schema(), integrations.NewDefaultParquetWriterProperties())
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer parquetWriter.Close()
 
-	return convertData(avroReader, parquetWriter)
+	p := pipeline.NewDataPipeline(avroReader, parquetWriter)
+
+	metrics, err := p.Start(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	return metrics, nil
 }
 
-func validateInputs(ctx context.Context, avroPath, parquetPath string, chunkSize int) error {
+func validateInputs(ctx context.Context, avroPath, parquetPath string, chunkSize int64) error {
 	if avroPath == "" {
 		return errors.New("avro file path cannot be empty")
 	}
@@ -80,51 +81,5 @@ func validateInputs(ctx context.Context, avroPath, parquetPath string, chunkSize
 	if ctx == nil {
 		return errors.New("context cannot be nil")
 	}
-	return nil
-}
-
-func createAvroReader(avroPath string, chunkSize int) (*avro.OCFReader, error) {
-	data, err := os.ReadFile(avroPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read Avro file '%s': %w", avroPath, err)
-	}
-
-	r := bytes.NewReader(data)
-	bufReader := bufio.NewReaderSize(r, 4096*8)
-	return avro.NewOCFReader(bufReader, avro.WithChunk(chunkSize), avro.WithReadCacheSize(4096*8))
-}
-
-func createParquetWriter(parquetPath string, schema *arrow.Schema) (*pq.FileWriter, error) {
-	file, err := os.OpenFile(parquetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Parquet file: %w", err)
-	}
-
-	writerProps := filesystem.NewDefaultParquetWriterProperties()
-	arrowProps := pq.NewArrowWriterProperties(pq.WithStoreSchema())
-
-	return pq.NewFileWriter(schema, file, writerProps, arrowProps)
-}
-
-func convertData(reader *avro.OCFReader, writer *pq.FileWriter) error {
-	startTime := time.Now()
-
-	for reader.Next() {
-		if err := reader.Err(); err != nil {
-			return fmt.Errorf("error reading Avro record: %w", err)
-		}
-
-		record := reader.Record()
-		if err := writer.WriteBuffered(record); err != nil {
-			return fmt.Errorf("error writing Parquet record: %w", err)
-		}
-		record.Release()
-	}
-
-	if err := reader.Err(); err != nil && err != io.EOF {
-		return fmt.Errorf("error in Avro reader: %w", err)
-	}
-
-	fmt.Printf("Conversion completed in %v\n", time.Since(startTime))
 	return nil
 }

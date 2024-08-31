@@ -18,20 +18,20 @@ func ConvertCSVToJSON(
 	delimiter rune,
 	nullValues []string,
 	stringsCanBeNull bool,
-) error {
+) (string, error) {
 
 	// Validate input parameters
 	if csvFilePath == "" {
-		return errors.New("CSV file path cannot be empty")
+		return "", errors.New("CSV file path cannot be empty")
 	}
 	if jsonFilePath == "" {
-		return errors.New("JSON file path cannot be empty")
+		return "", errors.New("JSON file path cannot be empty")
 	}
 	if chunkSize <= 0 {
-		return errors.New("chunk size must be greater than zero")
+		return "", errors.New("chunk size must be greater than zero")
 	}
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return "", errors.New("context cannot be nil")
 	}
 
 	// Step 1: Infer schema from the CSV file
@@ -42,7 +42,7 @@ func ConvertCSVToJSON(
 		StringsCanBeNull: stringsCanBeNull,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to infer schema: %w", err)
+		return "", fmt.Errorf("failed to infer schema: %w", err)
 	}
 
 	// Step 2: Create CSV reader with the inferred schema
@@ -54,24 +54,22 @@ func ConvertCSVToJSON(
 		StringsCanBeNull: stringsCanBeNull,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create CSV reader: %w", err)
+		return "", fmt.Errorf("failed to create CSV reader: %w", err)
 	}
 	defer csvReader.Close()
 
 	// Step 3: Setup Parquet writer with the inferred schema
 	jsonWriter, err := integrations.NewJSONWriter(ctx, jsonFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to create JSON writer: %w", err)
+		return "", fmt.Errorf("failed to create JSON writer: %w", err)
 	}
 	defer jsonWriter.Close()
 
 	// Step 4: Setup and start the pipeline for conversion
 	metrics, err := pipeline.NewDataPipeline(csvReader, jsonWriter).Start(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to convert CSV to Parquet: %w", err)
+		return "", fmt.Errorf("failed to convert CSV to Parquet: %w", err)
 	}
 
-	fmt.Println(metrics)
-
-	return nil
+	return metrics, nil
 }

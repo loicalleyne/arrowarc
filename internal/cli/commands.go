@@ -115,7 +115,12 @@ func CSVToParquet(ctx context.Context) error {
 	fmt.Print("Enter the path for the output Parquet file: ")
 	var parquetPath string
 	fmt.Scanln(&parquetPath)
-	return converter.ConvertCSVToParquet(context.Background(), csvPath, parquetPath, true, 100000, ',', []string{}, true)
+	metrics, err := converter.ConvertCSVToParquet(context.Background(), csvPath, parquetPath, true, 100000, ',', []string{}, true)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
+	return nil
 }
 
 func CSVToJSON(ctx context.Context) error {
@@ -125,7 +130,12 @@ func CSVToJSON(ctx context.Context) error {
 	fmt.Print("Enter the path for the output JSON file: ")
 	var jsonPath string
 	fmt.Scanln(&jsonPath)
-	return converter.ConvertCSVToJSON(context.Background(), csvPath, jsonPath, true, 100000, ',', []string{}, true)
+	metrics, err := converter.ConvertCSVToJSON(context.Background(), csvPath, jsonPath, true, 100000, ',', []string{}, true)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
+	return nil
 }
 
 func ParquetToJSON(ctx context.Context) error {
@@ -135,7 +145,12 @@ func ParquetToJSON(ctx context.Context) error {
 	fmt.Print("Enter the path for the output JSON file: ")
 	var jsonPath string
 	fmt.Scanln(&jsonPath)
-	return converter.ConvertParquetToJSON(context.Background(), parquetPath, jsonPath, true, 100000, []string{}, []int{}, true, true)
+	metrics, err := converter.ConvertParquetToJSON(context.Background(), parquetPath, jsonPath, true, 100000, []string{}, []int{}, true, true)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
+	return nil
 }
 
 func RewriteParquet(ctx context.Context) error {
@@ -161,5 +176,10 @@ func AvroToParquet(ctx context.Context) error {
 	fmt.Print("Enter the path for the output Parquet file: ")
 	var parquetPath string
 	fmt.Scanln(&parquetPath)
-	return converter.ConvertAvroToParquet(context.Background(), avroPath, parquetPath, 100000, compress.Codecs.Snappy)
+	metrics, err := converter.ConvertAvroToParquet(context.Background(), avroPath, parquetPath, 100000, compress.Codecs.Snappy)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
+	return nil
 }

@@ -47,20 +47,20 @@ func ConvertCSVToParquet(
 	delimiter rune,
 	nullValues []string,
 	stringsCanBeNull bool,
-) error {
+) (string, error) {
 
 	// Validate input parameters
 	if csvFilePath == "" {
-		return errors.New("CSV file path cannot be empty")
+		return "", errors.New("CSV file path cannot be empty")
 	}
 	if parquetFilePath == "" {
-		return errors.New("parquet file path cannot be empty")
+		return "", errors.New("parquet file path cannot be empty")
 	}
 	if chunkSize <= 0 {
-		return errors.New("chunk size must be greater than zero")
+		return "", errors.New("chunk size must be greater than zero")
 	}
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return "", errors.New("context cannot be nil")
 	}
 
 	// Step 1: Infer schema from the CSV file
@@ -71,7 +71,7 @@ func ConvertCSVToParquet(
 		StringsCanBeNull: stringsCanBeNull,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to infer schema: %w", err)
+		return "", fmt.Errorf("failed to infer schema: %w", err)
 	}
 
 	// Step 2: Create CSV reader with the inferred schema
@@ -83,7 +83,7 @@ func ConvertCSVToParquet(
 		StringsCanBeNull: stringsCanBeNull,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create CSV reader: %w", err)
+		return "", fmt.Errorf("failed to create CSV reader: %w", err)
 	}
 	defer csvReader.Close()
 
@@ -91,7 +91,7 @@ func ConvertCSVToParquet(
 	parquetWriterProps := integrations.NewDefaultParquetWriterProperties()
 	parquetWriter, err := integrations.NewParquetWriter(parquetFilePath, schema, parquetWriterProps)
 	if err != nil {
-		return fmt.Errorf("failed to create Parquet writer for file '%s': %w", parquetFilePath, err)
+		return "", fmt.Errorf("failed to create Parquet writer for file '%s': %w", parquetFilePath, err)
 	}
 	defer func() {
 		if cerr := parquetWriter.Close(); cerr != nil {
@@ -102,10 +102,10 @@ func ConvertCSVToParquet(
 	// Step 4: Setup and start the pipeline for conversion
 	metrics, err := pipeline.NewDataPipeline(csvReader, parquetWriter).Start(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to convert CSV to Parquet: %w", err)
+		return "", fmt.Errorf("failed to convert CSV to Parquet: %w", err)
 	}
 
 	fmt.Println(metrics)
 
-	return nil
+	return "", nil
 }
