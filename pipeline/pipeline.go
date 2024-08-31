@@ -103,6 +103,7 @@ func NewDataPipeline(reader interfaces.Reader, writer interfaces.Writer) *DataPi
 }
 
 // Start begins the pipeline processing and returns the metrics report
+// Start begins the pipeline processing and returns the metrics report
 func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
@@ -129,12 +130,15 @@ func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 		dp.metrics.UpdateMetrics()
 	}()
 
-	// Listen for errors
-	for err := range dp.errCh {
+	// Listen for errors and handle context cancellation
+	select {
+	case err := <-dp.Done():
 		if err != nil {
 			cancel() // Cancel the context to stop all operations
 			return "", err
 		}
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
 
 	// Create a transport report
@@ -259,4 +263,9 @@ func PrettyPrint(v interface{}) (string, error) {
 		return "", fmt.Errorf("json: failed to pretty print: %w", err)
 	}
 	return buf.String(), nil
+}
+
+// Done returns a channel that the pipeline can be waited on
+func (dp *DataPipeline) Done() <-chan error {
+	return dp.errCh
 }

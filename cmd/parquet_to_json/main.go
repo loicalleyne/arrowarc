@@ -31,6 +31,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -87,10 +88,11 @@ Options:
 		intRowGroupsList[i] = intRowGroup
 	}
 
-	err = converter.ConvertParquetToJSON(ctx, parquetPath, jsonPath, memoryMap, int64(chunkSize), columnsList, intRowGroupsList, parallel, includeStructs)
+	metrics, err := converter.ConvertParquetToJSON(ctx, parquetPath, jsonPath, memoryMap, int64(chunkSize), columnsList, intRowGroupsList, parallel, includeStructs)
 	if err != nil {
 		log.Fatalf("Error converting Parquet to JSON: %v", err)
 	}
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
 
 	log.Println("Parquet to JSON conversion completed successfully")
 }

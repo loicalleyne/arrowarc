@@ -37,16 +37,16 @@ import (
 	"github.com/arrowarc/arrowarc/pipeline"
 )
 
-func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, includeStructs bool) error {
+func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath string, memoryMap bool, chunkSize int64, columns []string, rowGroups []int, parallel bool, includeStructs bool) (string, error) {
 	// Validate input parameters
 	if parquetFilePath == "" {
-		return fmt.Errorf("parquet file path cannot be empty")
+		return "", fmt.Errorf("parquet file path cannot be empty")
 	}
 	if jsonFilePath == "" {
-		return fmt.Errorf("JSON file path cannot be empty")
+		return "", fmt.Errorf("JSON file path cannot be empty")
 	}
 	if chunkSize <= 0 {
-		return fmt.Errorf("chunk size must be greater than zero")
+		return "", fmt.Errorf("chunk size must be greater than zero")
 	}
 
 	// Setup the reader
@@ -56,21 +56,32 @@ func ConvertParquetToJSON(ctx context.Context, parquetFilePath, jsonFilePath str
 		Parallel:  parallel,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create Parquet reader for file '%s': %w", parquetFilePath, err)
+		return "", fmt.Errorf("failed to create Parquet reader for file '%s': %w", parquetFilePath, err)
 	}
 
 	// Setup the writer
 	writer, err := filesystem.NewJSONWriter(ctx, jsonFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to create JSON writer for file '%s': %w", jsonFilePath, err)
+		return "", fmt.Errorf("failed to create JSON writer for file '%s': %w", jsonFilePath, err)
+	}
+	defer func() {
+		if cerr := writer.Close(); cerr != nil {
+			err = fmt.Errorf("failed to close JSON writer: %w", cerr)
+		}
+	}()
+	// Setup pipeline
+	p := pipeline.NewDataPipeline(reader, writer)
+
+	// Start the pipeline and wait for completion
+	metrics, startErr := p.Start(ctx)
+	if startErr != nil {
+		return "", fmt.Errorf("failed to start conversion pipeline: %w", startErr)
 	}
 
-	// Setup the pipeline
-	metrics, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to convert Parquet to JSON: %w", err)
+	// Wait for the pipeline to finish
+	if pipelineErr := <-p.Done(); pipelineErr != nil {
+		return "", fmt.Errorf("pipeline encountered an error: %w", pipelineErr)
 	}
 
-	fmt.Println(metrics)
-	return nil
+	return metrics, nil
 }

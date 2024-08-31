@@ -30,9 +30,20 @@ duck, err := integrations.OpenDuckDBConnection(ctx, dbFilePath)
 writer, err := integrations.NewDuckDBRecordWriter(ctx, duck, tableID)
 
 // Create and start the data pipeline
-p, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+p, err := pipeline.NewDataPipeline(reader, writer)
+
+// Start the pipeline
+err = p.Start(ctx)
+if err != nil {
+    log.Fatalf("Failed to start pipeline: %v", err)
+}
+
+// Wait for the pipeline to finish
+<-p.Done()
+
 // Print the Transport Report
-p.Report()
+fmt.Println(p.Report())
+
 ```
 
 ---

@@ -31,6 +31,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -73,9 +74,9 @@ Options:
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	err = converter.ConvertCSVToJSON(ctx, csvPath, jsonPath, hasHeader, int64(chunkSize), rune(delimiter[0]), strings.Split(nullValues, ","), stringsCanBeNull)
+	metrics, err := converter.ConvertCSVToJSON(ctx, csvPath, jsonPath, hasHeader, int64(chunkSize), rune(delimiter[0]), strings.Split(nullValues, ","), stringsCanBeNull)
 	if err != nil {
 		log.Fatalf("Error converting CSV to JSON: %v", err)
 	}
-	log.Println("CSV to JSON conversion completed successfully")
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
 }
