@@ -130,9 +130,9 @@ Transport 4 million records from Postgres to Parquet in under 3 seconds.
 
 ```json
 Pipeline metrics: {
+  "StartTime": "2024-08-31T13:10:54-05:00",
   "EndTime": "2024-08-31T13:10:57-05:00",
   "RecordsProcessed": 4000000,
-  "StartTime": "2024-08-31T13:10:54-05:00",
   "Throughput": "1337039.12 records/second",
   "ThroughputBytes": "172.16 MB/second",
   "TotalBytes": "515.05 MB",
