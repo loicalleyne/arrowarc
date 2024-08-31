@@ -71,7 +71,7 @@ func ConvertCSVToJSON(
 		return fmt.Errorf("failed to convert CSV to Parquet: %w", err)
 	}
 
-	fmt.Println(metrics.Report())
+	fmt.Println(metrics)
 
 	return nil
 }

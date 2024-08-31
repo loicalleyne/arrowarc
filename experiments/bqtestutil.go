@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 
+	"cloud.google.com/go/bigquery/storage/apiv1/storagepb"
 	"github.com/google/uuid"
 )
 
@@ -40,4 +41,16 @@ func sanitize(s string, allowedSeparator string) string {
 		return s
 	}
 	return reg.ReplaceAllString(s, "")
+}
+
+func BuildAppendRowsRequest(data [][]byte) *storagepb.AppendRowsRequest {
+	return &storagepb.AppendRowsRequest{
+		Rows: &storagepb.AppendRowsRequest_ProtoRows{
+			ProtoRows: &storagepb.AppendRowsRequest_ProtoData{
+				Rows: &storagepb.ProtoRows{
+					SerializedRows: data,
+				},
+			},
+		},
+	}
 }

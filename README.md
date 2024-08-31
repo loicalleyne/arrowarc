@@ -64,7 +64,7 @@ p.Report()
 | Database    | Extraction | Ingestion |
 |-------------|------------|-----------|
 | PostgreSQL  | ✅         | 🚧        |
-| BigQuery    | ✅         | 🚧        |
+| BigQuery    | ✅         | ✅        |
 | DuckDB      | ✅         | ✅        |
 | Spanner     | ✅         | ❌        |
 | CockroachDB | ✅         | 🚧        |

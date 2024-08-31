@@ -107,7 +107,7 @@ func TestWriteParquetFileStream(t *testing.T) {
 			require.NotNil(t, metrics, "Metrics should not be nil")
 
 			// Print the metrics report
-			t.Log(metrics.Report())
+			t.Log(metrics)
 
 			t.Cleanup(func() {
 				os.Remove(test.outputFilePath)

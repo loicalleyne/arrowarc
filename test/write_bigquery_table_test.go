@@ -61,7 +61,7 @@ func TestWriteArrowRecordsToBigQuery(t *testing.T) {
 	// BigQuery table details
 	projectID := "tfmv-371720"
 	datasetID := "tpch"
-	tableID := "region"
+	tableID := "region_copy"
 
 	tests := []struct {
 		description string
