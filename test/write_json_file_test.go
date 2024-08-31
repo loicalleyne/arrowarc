@@ -117,6 +117,6 @@ func TestWriteJSONFileStream(t *testing.T) {
 	assert.NoError(t, err, "Error should be nil when closing the JSON file writer")
 
 	// Print the metrics report
-	t.Log(metrics.Report())
+	t.Log(metrics)
 
 }

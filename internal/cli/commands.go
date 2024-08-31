@@ -100,7 +100,12 @@ func ParquetToCSV(ctx context.Context) error {
 	fmt.Print("Enter the path for the output CSV file: ")
 	var csvPath string
 	fmt.Scanln(&csvPath)
-	return converter.ConvertParquetToCSV(context.Background(), parquetPath, csvPath, true, 100000, []string{}, []int{}, false, ',', false, "", nil, nil)
+	metrics, err := converter.ConvertParquetToCSV(context.Background(), parquetPath, csvPath, true, 100000, []string{}, []int{}, false, ',', false, "", nil, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Conversion completed. Summary: %s\n", metrics)
+	return nil
 }
 
 func CSVToParquet(ctx context.Context) error {

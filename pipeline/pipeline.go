@@ -1,36 +1,9 @@
-// --------------------------------------------------------------------------------
-// Author: Thomas F McGeehan V
-//
-// This file is part of a software project developed by Thomas F McGeehan V.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-//
-// For more information about the MIT License, please visit:
-// https://opensource.org/licenses/MIT
-//
-// Acknowledgment appreciated but not required.
-// --------------------------------------------------------------------------------
-
 package pipeline
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -42,11 +15,66 @@ import (
 )
 
 // Metrics stores pipeline processing metrics
+// Metrics stores pipeline processing metrics
 type Metrics struct {
+	sync.Mutex
 	RecordsProcessed int
 	TotalBytes       int64
 	StartTime        time.Time
 	EndTime          time.Time
+	TotalDuration    time.Duration
+	Throughput       float64
+	ThroughputBytes  float64
+}
+
+// UpdateMetrics calculates the total duration, throughput, and throughput in bytes.
+func (m *Metrics) UpdateMetrics() {
+	m.Lock()
+	defer m.Unlock()
+
+	// Calculate total duration
+	m.TotalDuration = m.EndTime.Sub(m.StartTime)
+
+	// Avoid division by zero in throughput calculation
+	if m.TotalDuration > 0 {
+		m.Throughput = float64(m.RecordsProcessed) / m.TotalDuration.Seconds()
+		m.ThroughputBytes = float64(m.TotalBytes) / m.TotalDuration.Seconds()
+	} else {
+		m.Throughput = 0
+		m.ThroughputBytes = 0
+	}
+}
+
+// Report generates a summary of the collected metrics
+// Report generates a summary of the collected metrics
+func (m *Metrics) Report() string {
+	m.Lock()
+	defer m.Unlock()
+
+	report := struct {
+		RecordsProcessed int           `json:"records_processed"`
+		TotalBytes       int64         `json:"total_bytes"`
+		StartTime        time.Time     `json:"start_time"`
+		EndTime          time.Time     `json:"end_time"`
+		TotalDuration    time.Duration `json:"total_duration"`
+		Throughput       float64       `json:"throughput"`
+		ThroughputBytes  float64       `json:"throughput_bytes"`
+	}{
+		RecordsProcessed: m.RecordsProcessed,
+		TotalBytes:       m.TotalBytes,
+		StartTime:        m.StartTime,
+		EndTime:          m.EndTime,
+		TotalDuration:    m.TotalDuration,
+		Throughput:       m.Throughput,
+		ThroughputBytes:  m.ThroughputBytes,
+	}
+
+	jsonData, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Error generating report: %v", err)
+	}
+
+	return string(jsonData)
 }
 
 // Duration returns the total duration of the pipeline
@@ -54,21 +82,10 @@ func (m *Metrics) Duration() time.Duration {
 	return m.EndTime.Sub(m.StartTime)
 }
 
-// Report generates a summary of the collected metrics
-func (m *Metrics) Report() string {
-	return fmt.Sprintf("Records Processed: %d\nTotal Bytes: %d\nTotal Duration: %v\nThroughput (records/second): %f\nThroughput (bytes/second): %f",
-		m.RecordsProcessed,
-		m.TotalBytes,
-		m.Duration(),
-		float64(m.RecordsProcessed)/m.Duration().Seconds(),
-		float64(m.TotalBytes)/m.Duration().Seconds(),
-	)
-}
-
 // DataPipeline defines the structure for a data processing pipeline
 type DataPipeline struct {
-	reader  interfaces.Reader // single reader
-	writer  interfaces.Writer // single writer
+	reader  interfaces.Reader
+	writer  interfaces.Writer
 	errCh   chan error
 	metrics *Metrics
 }
@@ -86,7 +103,7 @@ func NewDataPipeline(reader interfaces.Reader, writer interfaces.Writer) *DataPi
 }
 
 // Start begins the pipeline processing and returns the metrics report
-func (dp *DataPipeline) Start(ctx context.Context) (*Metrics, error) {
+func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -102,23 +119,45 @@ func (dp *DataPipeline) Start(ctx context.Context) (*Metrics, error) {
 	wg.Add(1)
 	go dp.startWriter(ctx, recordChan, &wg)
 
-	// Wait for all goroutines to finish and then close the error channel
+	// Monitor goroutines and handle errors
 	go func() {
 		wg.Wait()
 		close(dp.errCh)
+		dp.metrics.Lock()
 		dp.metrics.EndTime = time.Now()
+		dp.metrics.Unlock()
+		dp.metrics.UpdateMetrics()
 	}()
 
 	// Listen for errors
 	for err := range dp.errCh {
 		if err != nil {
 			cancel() // Cancel the context to stop all operations
-			return nil, err
+			return "", err
 		}
 	}
 
-	// Return the collected metrics
-	return dp.metrics, nil
+	// Create a transport report
+	report := struct {
+		RecordsProcessed int     `json:"records_processed"`
+		TotalBytes       int64   `json:"total_bytes"`
+		TotalDuration    string  `json:"total_duration"`
+		Throughput       float64 `json:"throughput_records_per_second"`
+		ThroughputBytes  float64 `json:"throughput_bytes_per_second"`
+	}{
+		RecordsProcessed: dp.metrics.RecordsProcessed,
+		TotalBytes:       dp.metrics.TotalBytes,
+		TotalDuration:    dp.metrics.TotalDuration.String(),
+		Throughput:       dp.metrics.Throughput,
+		ThroughputBytes:  dp.metrics.ThroughputBytes,
+	}
+
+	jsonReport, err := PrettyPrint(report)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal transport report: %w", err)
+	}
+
+	return jsonReport, nil
 }
 
 // startReader reads records from the reader and sends them to the channel
@@ -150,8 +189,11 @@ func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, w
 				continue
 			}
 
-			dp.metrics.RecordsProcessed++
-			dp.metrics.TotalBytes += int64(record.Schema().Metadata().FindKey("size"))
+			dp.metrics.Lock()
+			dp.metrics.RecordsProcessed += int(record.NumRows())
+			recordSize := calculateRecordSize(record)
+			dp.metrics.TotalBytes += recordSize
+			dp.metrics.Unlock()
 
 			select {
 			case ch <- record:
@@ -161,6 +203,19 @@ func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, w
 			}
 		}
 	}
+}
+
+// calculateRecordSize calculates the approximate size of a record based on its columns
+func calculateRecordSize(record arrow.Record) int64 {
+	size := int64(0)
+	for _, col := range record.Columns() {
+		for _, buf := range col.Data().Buffers() {
+			if buf != nil {
+				size += int64(buf.Len())
+			}
+		}
+	}
+	return size
 }
 
 // startWriter receives records from the channel and writes them using the writer
@@ -193,4 +248,15 @@ func (dp *DataPipeline) startWriter(ctx context.Context, ch chan arrow.Record, w
 			record.Release()
 		}
 	}
+}
+
+// rettyPrint marshals the provided value into a pretty-printed JSON string.
+func PrettyPrint(v interface{}) (string, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return "", fmt.Errorf("json: failed to pretty print: %w", err)
+	}
+	return buf.String(), nil
 }

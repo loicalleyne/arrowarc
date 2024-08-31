@@ -163,29 +163,35 @@ func (w *BigQueryRecordWriter) Write(record arrow.Record) error {
 	}
 
 	maxRetries := 3
+	var lastErr error
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		err := w.appendClient.Send(appendReq)
 		if err == nil {
-			return nil
+			fmt.Printf("AppendRowsRequest sent successfully on attempt %d\n", attempt+1)
+			return nil // Success, exit the function
 		}
+
+		lastErr = err
+		fmt.Printf("Error sending AppendRowsRequest (attempt %d of %d): %v\n", attempt+1, maxRetries, err)
+
 		if err == io.EOF {
 			if err := w.recreateAppendClient(); err != nil {
 				return fmt.Errorf("failed to recreate append client: %w", err)
 			}
 			continue
 		}
-		if attempt == maxRetries-1 {
-			return fmt.Errorf("error sending AppendRowsRequest after %d attempts: %w", maxRetries, err)
-		}
+
+		// Add a small delay before retrying
 		time.Sleep(time.Second * time.Duration(attempt+1))
 	}
 
-	return fmt.Errorf("failed to send AppendRowsRequest after %d attempts", maxRetries)
+	return fmt.Errorf("failed to send AppendRowsRequest after %d attempts: %w", maxRetries, lastErr)
 }
 
 func (w *BigQueryRecordWriter) recreateAppendClient() error {
 	var err error
-	w.appendClient, err = w.client.client.AppendRows(context.Background())
+	ctx := context.Background()
+	w.appendClient, err = w.client.client.AppendRows(ctx)
 	return err
 }
 
@@ -196,11 +202,16 @@ func (w *BigQueryRecordWriter) Close() error {
 		return fmt.Errorf("failed to close IPC writer: %w", err)
 	}
 
-	_, err := w.client.client.FinalizeWriteStream(context.TODO(), &storagepb.FinalizeWriteStreamRequest{
-		Name: w.writeStream.GetName(),
-	})
+	// Finalize the write stream
+	finalizeRequest := &storagepb.FinalizeWriteStreamRequest{
+		Name: w.writeStream.Name,
+	}
+	_, err := w.client.client.FinalizeWriteStream(context.Background(), finalizeRequest)
+	if err != nil {
+		return fmt.Errorf("failed to finalize write stream: %w", err)
+	}
 
 	defer memoryPool.PutAllocator(w.writerOptions.Allocator)
 
-	return err
+	return nil
 }

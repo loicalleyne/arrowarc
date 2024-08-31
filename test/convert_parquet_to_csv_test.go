@@ -31,26 +31,22 @@ package test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	converter "github.com/arrowarc/arrowarc/convert"
-	generator "github.com/arrowarc/arrowarc/generator"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestConvertParquetToCSV(t *testing.T) {
 
-	parquetFilePath := "sample_test.parquet"
+	parquetFilePath := "/Users/thomasmcgeehan/ArrowArc/arrowarc/data/parquet-testing/leftdate3_192_loop_1.parquet"
 	csvFilePathWithHeader := "output_test_with_header.csv"
 	csvFilePathWithoutHeader := "output_test_without_header.csv"
 
-	err := generator.GenerateParquetFile(parquetFilePath, 100*1024, false) // 100 KB, simple structure
-	assert.NoError(t, err, "Error should be nil when generating Parquet file")
-
 	t.Cleanup(func() {
-		os.Remove(parquetFilePath)
 		os.Remove(csvFilePathWithHeader)
 		os.Remove(csvFilePathWithoutHeader)
 	})
@@ -72,7 +68,7 @@ func TestConvertParquetToCSV(t *testing.T) {
 			parquetFilePath: parquetFilePath,
 			csvFilePath:     csvFilePathWithHeader,
 			memoryMap:       false,
-			chunkSize:       1024,
+			chunkSize:       2048,
 			columns:         nil, // Read all columns
 			rowGroups:       nil, // Read all row groups
 			parallel:        true,
@@ -103,8 +99,11 @@ func TestConvertParquetToCSV(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			err := converter.ConvertParquetToCSV(ctx, test.parquetFilePath, test.csvFilePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel, test.delimiter, test.includeHeader, test.nullValue, nil, nil)
+			metrics, err := converter.ConvertParquetToCSV(ctx, test.parquetFilePath, test.csvFilePath, test.memoryMap, test.chunkSize, test.columns, test.rowGroups, test.parallel, test.delimiter, test.includeHeader, test.nullValue, nil, nil)
 			assert.NoError(t, err, "Error should be nil when converting Parquet to CSV")
+			fmt.Println(metrics)
+
+			assert.NotNil(t, metrics, "Metrics should not be nil")
 
 			_, err = os.Stat(test.csvFilePath)
 			assert.NoError(t, err, "CSV file should be created")

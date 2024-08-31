@@ -47,19 +47,19 @@ func ConvertParquetToCSV(
 	delimiter rune, includeHeader bool,
 	nullValue string, stringsReplacer *strings.Replacer,
 	boolFormatter func(bool) string,
-) error {
+) (string, error) {
 	// Validate input parameters
 	if parquetFilePath == "" {
-		return errors.New("parquet file path cannot be empty")
+		return "", errors.New("parquet file path cannot be empty")
 	}
 	if csvFilePath == "" {
-		return errors.New("CSV file path cannot be empty")
+		return "", errors.New("CSV file path cannot be empty")
 	}
 	if chunkSize <= 0 {
-		return errors.New("chunk size must be greater than zero")
+		return "", errors.New("chunk size must be greater than zero")
 	}
 	if ctx == nil {
-		return errors.New("context cannot be nil")
+		return "", errors.New("context cannot be nil")
 	}
 
 	// Create Parquet reader
@@ -69,7 +69,7 @@ func ConvertParquetToCSV(
 		Parallel:  parallel,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create Parquet reader for file '%s': %w", parquetFilePath, err)
+		return "", fmt.Errorf("failed to create Parquet reader for file '%s': %w", parquetFilePath, err)
 	}
 	defer func() {
 		if cerr := reader.Close(); cerr != nil {
@@ -86,7 +86,7 @@ func ConvertParquetToCSV(
 		BoolFormatter:   boolFormatter,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create CSV writer for file '%s': %w", csvFilePath, err)
+		return "", fmt.Errorf("failed to create CSV writer for file '%s': %w", csvFilePath, err)
 	}
 	defer func() {
 		if cerr := writer.Close(); cerr != nil {
@@ -95,12 +95,15 @@ func ConvertParquetToCSV(
 	}()
 
 	// Setup pipeline
-	metrics, err := pipeline.NewDataPipeline(reader, writer).Start(ctx)
+	p := pipeline.NewDataPipeline(reader, writer)
 	if err != nil {
-		return fmt.Errorf("failed to convert Parquet to CSV: %w", err)
+		return "", fmt.Errorf("failed to convert Parquet to CSV: %w", err)
 	}
 
-	fmt.Println(metrics.Report())
+	metrics, err := p.Start(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert Parquet to CSV: %w", err)
+	}
 
-	return nil
+	return metrics, nil
 }
