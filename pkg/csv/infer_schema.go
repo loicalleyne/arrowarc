@@ -44,7 +44,7 @@ func InferCSVArrowSchema(ctx context.Context, filePath string, opts *CSVReadOpti
 			return nil, fmt.Errorf("failed to read first row: %w", err)
 		}
 		for i := range firstRow {
-			headers = append(headers, fmt.Sprintf("field%s", string('A'+i)))
+			headers = append(headers, fmt.Sprintf("field%d", i+1))
 		}
 	}
 
