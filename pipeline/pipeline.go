@@ -15,7 +15,6 @@ import (
 )
 
 // Metrics stores pipeline processing metrics
-// Metrics stores pipeline processing metrics
 type Metrics struct {
 	sync.Mutex
 	RecordsProcessed int
@@ -46,35 +45,21 @@ func (m *Metrics) UpdateMetrics() {
 }
 
 // Report generates a summary of the collected metrics
-// Report generates a summary of the collected metrics
 func (m *Metrics) Report() string {
 	m.Lock()
 	defer m.Unlock()
 
-	report := struct {
-		RecordsProcessed int           `json:"records_processed"`
-		TotalBytes       int64         `json:"total_bytes"`
-		StartTime        time.Time     `json:"start_time"`
-		EndTime          time.Time     `json:"end_time"`
-		TotalDuration    time.Duration `json:"total_duration"`
-		Throughput       float64       `json:"throughput"`
-		ThroughputBytes  float64       `json:"throughput_bytes"`
-	}{
-		RecordsProcessed: m.RecordsProcessed,
-		TotalBytes:       m.TotalBytes,
-		StartTime:        m.StartTime,
-		EndTime:          m.EndTime,
-		TotalDuration:    m.TotalDuration,
-		Throughput:       m.Throughput,
-		ThroughputBytes:  m.ThroughputBytes,
-	}
-
+	report := generateMetricsReport(m)
 	jsonData, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Sprintf("Error generating report: %v", err)
 	}
 
 	return string(jsonData)
+}
+
+func formatDuration(d time.Duration) string {
+	return fmt.Sprintf("%.2fs", d.Seconds())
 }
 
 // Duration returns the total duration of the pipeline
@@ -102,7 +87,6 @@ func NewDataPipeline(reader interfaces.Reader, writer interfaces.Writer) *DataPi
 	}
 }
 
-// Start begins the pipeline processing and returns the metrics report
 // Start begins the pipeline processing and returns the metrics report
 func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 	var wg sync.WaitGroup
@@ -142,20 +126,7 @@ func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 	}
 
 	// Create a transport report
-	report := struct {
-		RecordsProcessed int     `json:"records_processed"`
-		TotalBytes       int64   `json:"total_bytes"`
-		TotalDuration    string  `json:"total_duration"`
-		Throughput       float64 `json:"throughput_records_per_second"`
-		ThroughputBytes  float64 `json:"throughput_bytes_per_second"`
-	}{
-		RecordsProcessed: dp.metrics.RecordsProcessed,
-		TotalBytes:       dp.metrics.TotalBytes,
-		TotalDuration:    dp.metrics.TotalDuration.String(),
-		Throughput:       dp.metrics.Throughput,
-		ThroughputBytes:  dp.metrics.ThroughputBytes,
-	}
-
+	report := generateMetricsReport(dp.metrics)
 	jsonReport, err := PrettyPrint(report)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal transport report: %w", err)
@@ -254,7 +225,7 @@ func (dp *DataPipeline) startWriter(ctx context.Context, ch chan arrow.Record, w
 	}
 }
 
-// rettyPrint marshals the provided value into a pretty-printed JSON string.
+// PrettyPrint marshals the provided value into a pretty-printed JSON string.
 func PrettyPrint(v interface{}) (string, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -268,4 +239,39 @@ func PrettyPrint(v interface{}) (string, error) {
 // Done returns a channel that the pipeline can be waited on
 func (dp *DataPipeline) Done() <-chan error {
 	return dp.errCh
+}
+
+func formatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit || n > unit/2; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+type MetricsReport struct {
+	StartTime        string `json:"start_time"`
+	EndTime          string `json:"end_time"`
+	RecordsProcessed int    `json:"records_processed"`
+	TotalSize        string `json:"total_size"`
+	TotalDuration    string `json:"total_duration"`
+	Throughput       string `json:"throughput"`
+	ThroughputSize   string `json:"throughput_size"`
+}
+
+func generateMetricsReport(m *Metrics) MetricsReport {
+	return MetricsReport{
+		StartTime:        m.StartTime.Format(time.RFC3339),
+		EndTime:          m.EndTime.Format(time.RFC3339),
+		RecordsProcessed: m.RecordsProcessed,
+		TotalSize:        formatSize(m.TotalBytes),
+		TotalDuration:    formatDuration(m.TotalDuration),
+		Throughput:       fmt.Sprintf("%.2f records/s", m.Throughput),
+		ThroughputSize:   formatSize(int64(m.ThroughputBytes)) + "/s",
+	}
 }
