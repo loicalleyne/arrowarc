@@ -113,7 +113,5 @@ func ConvertCSVToParquet(
 		return "", fmt.Errorf("pipeline encountered an error: %w", pipelineErr)
 	}
 
-	fmt.Println(metrics)
-
-	return "", nil
+	return metrics, nil
 }

@@ -48,6 +48,19 @@ if pipelineErr := <-p.Done(); pipelineErr != nil {
 fmt.Println(p.Report())
 
 ```
+You can expect a report similar to this:
+
+```json
+{
+  "start_time": "2024-08-31T10:22:23-05:00",
+  "end_time": "2024-08-31T10:22:26-05:00",
+  "records_processed": 4000000,
+  "total_size": "0.63 GB",
+  "total_duration": "3.34s",
+  "throughput": "1197492.21 records/s",
+  "throughput_size": "194.11 MB/s"
+}
+```
 
 ---
 
