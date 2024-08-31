@@ -8,7 +8,7 @@ ArrowArc is an experimental data transport mechanism that uses Apache Arrow for 
 
 I'll add more benchmarks as I stabilize the library.
 
-### Transport Parquet to Parquet
+### Transport Postgres to Parquet
 
 Transport 4 million records from Postgres to Parquet in under 3 seconds.
 
