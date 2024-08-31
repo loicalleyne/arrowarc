@@ -1,0 +1,236 @@
+workflow:
+  version: "1.0"
+  name: "ArrowArc Data Pipeline"
+  description: "Multi-source data transport and conversion workflow"
+  
+  integrations:
+    - name: postgres_source
+      type: database
+      provider: postgres
+      mode: read
+      config:
+        host: db.arrowarc.com
+        port: 5432
+        database: arrowarc
+        username: ${DB_USER}
+        password: ${DB_PASSWORD}
+        ssl_mode: require
+
+    - name: mysql_source
+      type: database
+      provider: mysql
+      mode: read
+      config:
+        host: mysql.arrowarc.com
+        port: 3306
+        database: arrowarc_data
+        username: ${MYSQL_USER}
+        password: ${MYSQL_PASSWORD}
+
+    - name: gcs_dest
+      type: cloud_storage
+      provider: gcs
+      mode: write
+      config:
+        bucket: arrowarc-data-lake
+        prefix: data/output/
+        project_id: arrowarc-project
+        credentials: ${GCP_CREDENTIALS}
+
+    - name: s3_dest
+      type: cloud_storage
+      provider: s3
+      mode: write
+      config:
+        bucket: arrowarc-data-lake
+        prefix: data/output/
+        region: us-west-2
+        access_key_id: ${AWS_ACCESS_KEY_ID}
+        secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+
+    - name: azure_dest
+      type: cloud_storage
+      provider: azure
+      mode: write
+      config:
+        container: arrowarc-data-lake
+        prefix: data/output/
+        account_name: ${AZURE_STORAGE_ACCOUNT}
+        account_key: ${AZURE_STORAGE_KEY}
+
+    - name: kafka_source
+      type: streaming
+      provider: kafka
+      mode: read
+      config:
+        bootstrap_servers: "kafka1.arrowarc.com:9092,kafka2.arrowarc.com:9092"
+        topic: "data_stream"
+        group_id: "arrowarc-consumer"
+
+  conversions:
+    - name: postgres_to_parquet
+      input_format: postgres
+      output_format: parquet
+      options:
+        compression: snappy
+        row_group_size: 100000
+
+    - name: mysql_to_avro
+      input_format: mysql
+      output_format: avro
+      options:
+        compression: deflate
+        sync_interval: 16000
+
+    - name: json_to_orc
+      input_format: json
+      output_format: orc
+      options:
+        stripe_size: 67108864
+        index_stride: 10000
+
+  tasks:
+    - name: postgres_to_gcs_parquet
+      source: postgres_source
+      destination: gcs_dest
+      conversion: postgres_to_parquet
+      table_name: users
+      file_name: "users_data.parquet"
+
+    - name: mysql_to_s3_avro
+      source: mysql_source
+      destination: s3_dest
+      conversion: mysql_to_avro
+      table_name: orders
+      file_name: "orders_data.avro"
+
+    - name: kafka_to_azure_orc
+      source: kafka_source
+      destination: azure_dest
+      conversion: json_to_orc
+      topic_name: "data_stream"
+      file_name: "stream_data.orc"
+
+  settings:
+    parallel_tasks: 4
+    retry_attempts: 3
+    log_level: info
+    temp_directory: /tmp/arrowarc
+    max_memory: 4GB
+    batch_size: 10000
+    timeout: 3600
+
+  secrets:
+    - name: DB_USER
+      type: environment
+      key: DATABASE_USER
+      provider: environment
+
+    - name: DB_PASSWORD
+      type: vault
+      provider: hashicorp
+      path: secret/db_credentials
+      key: password
+
+    - name: MYSQL_USER
+      type: environment
+      key: MYSQL_USER
+      provider: environment
+
+    - name: MYSQL_PASSWORD
+      type: aws_secrets_manager
+      region: us-east-1
+      secret_id: mysql-credentials
+      provider: aws_secrets_manager
+
+    - name: GCP_CREDENTIALS
+      type: gcp_secret_manager
+      project_id: arrowarc-project
+      secret_id: gcp-service-account
+      version: latest
+      provider: gcp_secret_manager
+
+    - name: AWS_ACCESS_KEY_ID
+      type: environment
+      key: AWS_ACCESS_KEY_ID
+      provider: aws_secrets_manager
+
+    - name: AWS_SECRET_ACCESS_KEY
+      type: environment
+      key: AWS_SECRET_ACCESS_KEY
+      provider: aws_secrets_manager
+
+    - name: AZURE_STORAGE_ACCOUNT
+      type: environment
+      key: AZURE_STORAGE_ACCOUNT
+      provider: environment
+
+    - name: AZURE_STORAGE_KEY
+      type: azure_key_vault
+      vault_url: https://arrowarc-vault.vault.azure.net/
+      secret_name: azure-storage-key
+      version: latest
+      provider: azure_key_vault
+
+  monitoring:
+    enable: true
+    metrics_endpoint: /metrics
+    alert_thresholds:
+      task_failures: 5
+      memory_usage: 80%
+      cpu_usage: 90%
+      disk_usage: 95%
+    prometheus:
+      push_gateway: http://prometheus-pushgateway:9091
+      job_name: arrowarc_pipeline
+    logging:
+      level: info
+      format: json
+      output: stdout
+
+  resources:
+    cpu_limit: 8
+    memory_limit: 16GB
+    storage_limit: 100GB
+    execution_timeout: "2h"
+    max_retries: 3
+
+  scheduling:
+    cron: "0 1 * * *"
+    timezone: "UTC"
+
+  notifications:
+    - type: email
+      recipients:
+        - admin@arrowarc.com
+        - ops@arrowarc.com
+    - type: slack
+      webhook_url: ${SLACK_WEBHOOK_URL}
+      channel: "#pipeline-alerts"
+
+  error_handling:
+    retry_strategy: exponential_backoff
+    max_retry_interval: 300
+    failure_threshold: 5
+    alert_on_failure: true
+
+  data_quality:
+    enable: true
+    rules:
+      - name: null_check
+        table: users
+        column: email
+        condition: "IS NOT NULL"
+      - name: unique_check
+        table: orders
+        column: order_id
+        condition: "IS UNIQUE"
+
+  compliance:
+    data_retention:
+      enabled: true
+      period: 90d
+    encryption:
+      in_transit: true
+      at_rest: true
+    audit_logging: true
