@@ -46,8 +46,8 @@ import (
 type CSVReader struct {
 	reader *csv.Reader
 	file   *os.File
-	schema *arrow.Schema
 	alloc  memory.Allocator
+	schema *arrow.Schema
 }
 
 // CSVWriter writes records to a CSV file and implements the Writer interface.
@@ -77,6 +77,7 @@ type CSVWriteOptions struct {
 
 // NewCSVReader creates a new CSV reader for reading records from a CSV file.
 func NewCSVReader(ctx context.Context, filePath string, schema *arrow.Schema, opts *CSVReadOptions) (*CSVReader, error) {
+
 	alloc := pool.GetAllocator()
 
 	file, err := os.Open(filePath)
@@ -98,8 +99,8 @@ func NewCSVReader(ctx context.Context, filePath string, schema *arrow.Schema, op
 	return &CSVReader{
 		reader: reader,
 		file:   file,
-		schema: schema,
 		alloc:  alloc,
+		schema: schema,
 	}, nil
 }
 
