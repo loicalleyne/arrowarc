@@ -8,7 +8,10 @@ import (
 	"io"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"math"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	interfaces "github.com/arrowarc/arrowarc/internal/interfaces"
@@ -16,55 +19,44 @@ import (
 
 // Metrics stores pipeline processing metrics
 type Metrics struct {
-	sync.Mutex
-	RecordsProcessed int
+	RecordsProcessed int64
 	TotalBytes       int64
 	StartTime        time.Time
 	EndTime          time.Time
-	TotalDuration    time.Duration
-	Throughput       float64
-	ThroughputBytes  float64
+	TotalDuration    int64 // nanoseconds
+	Throughput       int64 // records per second * 100 (for two decimal places)
+	ThroughputBytes  int64 // bytes per second
+	endTimeUnix      int64
 }
 
 // UpdateMetrics calculates the total duration, throughput, and throughput in bytes.
 func (m *Metrics) UpdateMetrics() {
-	m.Lock()
-	defer m.Unlock()
+	endTime := time.Now()
+	m.EndTime = endTime
+	atomic.StoreInt64(&m.endTimeUnix, endTime.UnixNano())
 
-	// Calculate total duration
-	m.TotalDuration = m.EndTime.Sub(m.StartTime)
+	recordsProcessed := atomic.LoadInt64(&m.RecordsProcessed)
+	totalBytes := atomic.LoadInt64(&m.TotalBytes)
 
-	// Avoid division by zero in throughput calculation
-	if m.TotalDuration > 0 {
-		m.Throughput = float64(m.RecordsProcessed) / m.TotalDuration.Seconds()
-		m.ThroughputBytes = float64(m.TotalBytes) / m.TotalDuration.Seconds()
-	} else {
-		m.Throughput = 0
-		m.ThroughputBytes = 0
+	duration := endTime.Sub(m.StartTime)
+	atomic.StoreInt64(&m.TotalDuration, int64(duration))
+
+	if duration > 0 {
+		throughput := float64(recordsProcessed) / duration.Seconds()
+		throughputBytes := float64(totalBytes) / duration.Seconds()
+		atomic.StoreInt64(&m.Throughput, int64(throughput*100))
+		atomic.StoreInt64(&m.ThroughputBytes, int64(throughputBytes))
 	}
 }
 
 // Report generates a summary of the collected metrics
 func (m *Metrics) Report() string {
-	m.Lock()
-	defer m.Unlock()
-
 	report := generateMetricsReport(m)
 	jsonData, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Sprintf("Error generating report: %v", err)
 	}
-
 	return string(jsonData)
-}
-
-func formatDuration(d time.Duration) string {
-	return fmt.Sprintf("%.2fs", d.Seconds())
-}
-
-// Duration returns the total duration of the pipeline
-func (m *Metrics) Duration() time.Duration {
-	return m.EndTime.Sub(m.StartTime)
 }
 
 // DataPipeline defines the structure for a data processing pipeline
@@ -105,24 +97,28 @@ func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 	go dp.startWriter(ctx, recordChan, &wg)
 
 	// Monitor goroutines and handle errors
+	errChan := make(chan error, 1)
 	go func() {
 		wg.Wait()
 		close(dp.errCh)
-		dp.metrics.Lock()
-		dp.metrics.EndTime = time.Now()
-		dp.metrics.Unlock()
 		dp.metrics.UpdateMetrics()
+		close(errChan)
 	}()
 
 	// Listen for errors and handle context cancellation
 	select {
-	case err := <-dp.Done():
+	case err := <-dp.errCh:
 		if err != nil {
 			cancel() // Cancel the context to stop all operations
 			return "", err
 		}
+	case <-errChan:
+		// All goroutines have finished without error
 	case <-ctx.Done():
 		return "", ctx.Err()
+	case <-time.After(30 * time.Minute): // Adjust timeout as needed
+		cancel()
+		return "", fmt.Errorf("pipeline execution timed out")
 	}
 
 	// Create a transport report
@@ -135,10 +131,53 @@ func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 	return jsonReport, nil
 }
 
+func generateMetricsReport(metrics *Metrics) map[string]interface{} {
+	recordsProcessed := atomic.LoadInt64(&metrics.RecordsProcessed)
+	totalBytes := atomic.LoadInt64(&metrics.TotalBytes)
+	duration := time.Duration(atomic.LoadInt64(&metrics.TotalDuration))
+	throughput := float64(atomic.LoadInt64(&metrics.Throughput)) / 100
+	throughputBytes := atomic.LoadInt64(&metrics.ThroughputBytes)
+
+	return map[string]interface{}{
+		"StartTime":        metrics.StartTime.Format(time.RFC3339),
+		"EndTime":          time.Unix(0, atomic.LoadInt64(&metrics.endTimeUnix)).Format(time.RFC3339),
+		"RecordsProcessed": recordsProcessed,
+		"TotalBytes":       formatBytes(totalBytes),
+		"TotalDuration":    formatDuration(duration),
+		"Throughput":       formatThroughput(throughput),
+		"ThroughputBytes":  formatThroughputBytes(float64(throughputBytes)),
+	}
+}
+
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func formatDuration(d time.Duration) string {
+	return d.Round(time.Millisecond).String()
+}
+
+func formatThroughput(t float64) string {
+	return fmt.Sprintf("%.2f records/second", math.Round(t*100)/100)
+}
+
+func formatThroughputBytes(t float64) string {
+	return fmt.Sprintf("%s/second", formatBytes(int64(t)))
+}
+
 // startReader reads records from the reader and sends them to the channel
 func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, wg *sync.WaitGroup) {
 	defer wg.Done()
-	defer close(ch) // Close the channel to signal writer when done
+	defer close(ch)
 	defer dp.reader.Close()
 
 	for {
@@ -154,26 +193,29 @@ func (dp *DataPipeline) startReader(ctx context.Context, ch chan arrow.Record, w
 			}
 			if err != nil {
 				log.Printf("Error reading record: %v", err)
-				dp.errCh <- err
+				select {
+				case dp.errCh <- fmt.Errorf("reader error: %w", err):
+				default:
+					log.Printf("Error channel full, discarding error: %v", err)
+				}
 				return
 			}
 
 			if record == nil || record.NumCols() == 0 || record.NumRows() == 0 {
 				log.Println("Received empty or invalid record, skipping.")
-				record.Release() // Release the invalid or empty record to avoid memory leaks
+				record.Release()
 				continue
 			}
 
-			dp.metrics.Lock()
-			dp.metrics.RecordsProcessed += int(record.NumRows())
+			atomic.AddInt64(&dp.metrics.RecordsProcessed, int64(record.NumRows()))
 			recordSize := calculateRecordSize(record)
-			dp.metrics.TotalBytes += recordSize
-			dp.metrics.Unlock()
+			atomic.AddInt64(&dp.metrics.TotalBytes, recordSize)
 
 			select {
 			case ch <- record:
 			case <-ctx.Done():
 				log.Println("Context canceled, stopping reader.")
+				record.Release()
 				return
 			}
 		}
@@ -217,7 +259,12 @@ func (dp *DataPipeline) startWriter(ctx context.Context, ch chan arrow.Record, w
 
 			if err := dp.writer.Write(record); err != nil {
 				log.Printf("Error writing record: %v", err)
-				dp.errCh <- err
+				select {
+				case dp.errCh <- fmt.Errorf("writer error: %w", err):
+				default:
+					log.Printf("Error channel full, discarding error: %v", err)
+				}
+				record.Release()
 				return
 			}
 			record.Release()
@@ -238,40 +285,20 @@ func PrettyPrint(v interface{}) (string, error) {
 
 // Done returns a channel that the pipeline can be waited on
 func (dp *DataPipeline) Done() <-chan error {
-	return dp.errCh
+	doneCh := make(chan error, 1)
+
+	go func() {
+		defer close(doneCh)
+
+		if err, ok := <-dp.errCh; ok {
+			doneCh <- err
+		}
+	}()
+
+	return doneCh
 }
 
-func formatSize(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit || n > unit/2; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
-
-type MetricsReport struct {
-	StartTime        string `json:"start_time"`
-	EndTime          string `json:"end_time"`
-	RecordsProcessed int    `json:"records_processed"`
-	TotalSize        string `json:"total_size"`
-	TotalDuration    string `json:"total_duration"`
-	Throughput       string `json:"throughput"`
-	ThroughputSize   string `json:"throughput_size"`
-}
-
-func generateMetricsReport(m *Metrics) MetricsReport {
-	return MetricsReport{
-		StartTime:        m.StartTime.Format(time.RFC3339),
-		EndTime:          m.EndTime.Format(time.RFC3339),
-		RecordsProcessed: m.RecordsProcessed,
-		TotalSize:        formatSize(m.TotalBytes),
-		TotalDuration:    formatDuration(m.TotalDuration),
-		Throughput:       fmt.Sprintf("%.2f records/s", m.Throughput),
-		ThroughputSize:   formatSize(int64(m.ThroughputBytes)) + "/s",
-	}
+// Metrics returns the pipeline metrics
+func (dp *DataPipeline) Metrics() *Metrics {
+	return dp.metrics
 }

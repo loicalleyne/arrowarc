@@ -36,7 +36,7 @@ import (
 	"testing"
 	"time"
 
-	converter "github.com/arrowarc/arrowarc/convert"
+	converter "github.com/arrowarc/arrowarc/converter"
 	generator "github.com/arrowarc/arrowarc/generator"
 	"github.com/stretchr/testify/assert"
 )

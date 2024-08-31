@@ -34,7 +34,7 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow/go/v17/parquet/compress"
-	converter "github.com/arrowarc/arrowarc/convert"
+	converter "github.com/arrowarc/arrowarc/converter"
 	generator "github.com/arrowarc/arrowarc/generator"
 	pq "github.com/arrowarc/arrowarc/pkg/parquet"
 )
