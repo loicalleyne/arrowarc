@@ -36,6 +36,9 @@ import (
 	"os"
 	"sync"
 
+	"io"
+	"time"
+
 	storage "cloud.google.com/go/bigquery/storage/apiv1"
 	storagepb "cloud.google.com/go/bigquery/storage/apiv1/storagepb"
 	"github.com/apache/arrow/go/v17/arrow"
@@ -136,38 +139,54 @@ func (w *BigQueryRecordWriter) Write(record arrow.Record) error {
 		return fmt.Errorf("schema mismatch: expected %v but got %v", w.client.schema, record.Schema())
 	}
 
-	w.writeDone.Add(1)
-	go func(record arrow.Record) {
-		defer w.writeDone.Done()
+	w.buffer.Reset()
 
-		w.buffer.Reset()
+	if err := w.ipcWriter.Write(record); err != nil {
+		return fmt.Errorf("error writing record to buffer: %w", err)
+	}
 
-		// Write the record to the IPC writer
-		if err := w.ipcWriter.Write(record); err != nil {
-			fmt.Printf("error writing record to buffer: %v\n", err)
-			return
+	serializedData := w.buffer.Bytes()
+	if len(serializedData) == 0 {
+		return fmt.Errorf("serialized data is empty")
+	}
+
+	protoData := &storagepb.AppendRowsRequest_ProtoData{
+		Rows: &storagepb.ProtoRows{
+			SerializedRows: [][]byte{serializedData},
+		},
+		WriterSchema: w.protoSchema,
+	}
+
+	appendReq := &storagepb.AppendRowsRequest{
+		WriteStream: w.writeStream.GetName(),
+		Rows:        &storagepb.AppendRowsRequest_ProtoRows{ProtoRows: protoData},
+	}
+
+	maxRetries := 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := w.appendClient.Send(appendReq)
+		if err == nil {
+			return nil
 		}
-
-		serializedData := w.buffer.Bytes()
-
-		protoData := &storagepb.AppendRowsRequest_ProtoData{
-			Rows: &storagepb.ProtoRows{
-				SerializedRows: [][]byte{serializedData},
-			},
-			WriterSchema: w.protoSchema,
+		if err == io.EOF {
+			if err := w.recreateAppendClient(); err != nil {
+				return fmt.Errorf("failed to recreate append client: %w", err)
+			}
+			continue
 		}
-
-		appendReq := &storagepb.AppendRowsRequest{
-			WriteStream: w.writeStream.GetName(),
-			Rows:        &storagepb.AppendRowsRequest_ProtoRows{ProtoRows: protoData},
+		if attempt == maxRetries-1 {
+			return fmt.Errorf("error sending AppendRowsRequest after %d attempts: %w", maxRetries, err)
 		}
+		time.Sleep(time.Second * time.Duration(attempt+1))
+	}
 
-		if err := w.appendClient.Send(appendReq); err != nil {
-			fmt.Printf("error sending AppendRowsRequest: %v\n", err)
-		}
-	}(record)
+	return fmt.Errorf("failed to send AppendRowsRequest after %d attempts", maxRetries)
+}
 
-	return nil
+func (w *BigQueryRecordWriter) recreateAppendClient() error {
+	var err error
+	w.appendClient, err = w.client.client.AppendRows(context.Background())
+	return err
 }
 
 func (w *BigQueryRecordWriter) Close() error {
