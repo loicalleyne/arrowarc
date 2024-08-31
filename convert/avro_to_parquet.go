@@ -32,6 +32,7 @@ package convert
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/apache/arrow/go/v17/parquet/compress"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
@@ -63,6 +64,10 @@ func ConvertAvroToParquet(ctx context.Context, avroPath, parquetPath string, chu
 	metrics, err := p.Start(ctx)
 	if err != nil {
 		return "", err
+	}
+
+	if pipelineErr := <-p.Done(); pipelineErr != nil {
+		return "", fmt.Errorf("pipeline encountered an error: %w", pipelineErr)
 	}
 
 	return metrics, nil
