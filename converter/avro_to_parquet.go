@@ -41,38 +41,58 @@ import (
 
 // ConvertAvroToParquet converts an Avro OCF file to a Parquet file.
 func ConvertAvroToParquet(ctx context.Context, avroPath, parquetPath string, chunkSize int64, compression compress.Compression) (string, error) {
+	// Validate inputs before proceeding
 	if err := validateInputs(ctx, avroPath, parquetPath, chunkSize); err != nil {
 		return "", err
 	}
 
+	// Initialize the Avro reader
 	avroReader, err := integrations.NewAvroReader(ctx, avroPath, &integrations.AvroReadOptions{
 		ChunkSize: chunkSize,
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create Avro reader: %w", err)
 	}
-	defer avroReader.Close()
 
+	// Ensure Avro reader is closed once the function completes
+	defer func() {
+		if closeErr := avroReader.Close(); closeErr != nil {
+			err = fmt.Errorf("failed to close Avro reader: %w", closeErr)
+		}
+	}()
+
+	// Initialize the Parquet writer
 	parquetWriter, err := integrations.NewParquetWriter(parquetPath, avroReader.Schema(), integrations.NewDefaultParquetWriterProperties())
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create Parquet writer: %w", err)
 	}
-	defer parquetWriter.Close()
 
+	// Ensure Parquet writer is closed once the function completes
+	defer func() {
+		if closeErr := parquetWriter.Close(); closeErr != nil {
+			err = fmt.Errorf("failed to close Parquet writer: %w", closeErr)
+		}
+	}()
+
+	// Create a new data pipeline
 	p := pipeline.NewDataPipeline(avroReader, parquetWriter)
 
+	// Run the pipeline and capture metrics
 	metrics, err := p.Start(ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("pipeline failed to start: %w", err)
 	}
 
+	// Wait for the pipeline to complete
 	if pipelineErr := <-p.Done(); pipelineErr != nil {
 		return "", fmt.Errorf("pipeline encountered an error: %w", pipelineErr)
 	}
 
+	// Return the pipeline metrics
 	return metrics, nil
 }
 
+// validateInputs ensures the provided inputs are valid
 func validateInputs(ctx context.Context, avroPath, parquetPath string, chunkSize int64) error {
 	if avroPath == "" {
 		return errors.New("avro file path cannot be empty")

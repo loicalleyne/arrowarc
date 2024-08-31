@@ -37,11 +37,16 @@ import (
 	"time"
 
 	github "github.com/arrowarc/arrowarc/integrations/api/github"
+	"github.com/arrowarc/arrowarc/pkg/common/utils"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGitHubRepoAPIStream(t *testing.T) {
+	t.Parallel()
+	utils.LoadEnv()
+
+	// Skip test if GITHUB_TOKEN is not set
 	if os.Getenv("GITHUB_TOKEN") == "" {
 		t.Skip("Skipping test as GITHUB_TOKEN is not set")
 	}

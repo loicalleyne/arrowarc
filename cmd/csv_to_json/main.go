@@ -36,7 +36,7 @@ import (
 	"strings"
 	"time"
 
-	converter "github.com/arrowarc/arrowarc/convert"
+	converter "github.com/arrowarc/arrowarc/converter"
 	"github.com/docopt/docopt-go"
 )
 

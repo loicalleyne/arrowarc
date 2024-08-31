@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"github.com/apache/arrow/go/v17/arrow"
-	converter "github.com/arrowarc/arrowarc/convert"
+	converter "github.com/arrowarc/arrowarc/converter"
 	"github.com/stretchr/testify/assert"
 )
 
