@@ -27,6 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Package config provides configuration utilities.
 package config
 
 import (

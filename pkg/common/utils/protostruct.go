@@ -135,3 +135,64 @@ func MapArrowTypeToProtoType(dataType arrow.DataType) *descriptorpb.FieldDescrip
 		return descriptorpb.FieldDescriptorProto_TYPE_STRING.Enum() // Default to string if the type is not matched
 	}
 }
+
+func IsCompatibleProtoType(protoType descriptorpb.FieldDescriptorProto_Type, value interface{}) bool {
+	switch protoType {
+	case descriptorpb.FieldDescriptorProto_TYPE_BOOL:
+		_, ok := value.(bool)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_INT64:
+		_, ok := value.(int64)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_STRING:
+		_, ok := value.(string)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_FLOAT:
+		_, ok := value.(float64)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_DOUBLE:
+		_, ok := value.(float64)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_BYTES:
+		_, ok := value.([]byte)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_UINT32:
+		_, ok := value.(uint32)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_FIXED32:
+		_, ok := value.(uint32)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_FIXED64:
+		_, ok := value.(uint64)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_INT32:
+		_, ok := value.(int32)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_UINT64:
+		_, ok := value.(uint64)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_SFIXED32:
+		_, ok := value.(int32)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_SFIXED64:
+		_, ok := value.(int64)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_SINT32:
+		_, ok := value.(int32)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_SINT64:
+		_, ok := value.(int64)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_ENUM:
+		_, ok := value.(int32)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_MESSAGE:
+		_, ok := value.(*pb.Struct)
+		return ok
+	case descriptorpb.FieldDescriptorProto_TYPE_GROUP:
+		_, ok := value.(*pb.Struct)
+		return ok
+	default:
+		return false
+	}
+}

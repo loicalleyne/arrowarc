@@ -27,6 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Package parquet provides utilities for rewriting Parquet files.
 package parquet
 
 import (

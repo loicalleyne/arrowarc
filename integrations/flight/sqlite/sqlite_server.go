@@ -17,8 +17,6 @@
 //go:build go1.18
 // +build go1.18
 
-// Package example contains a FlightSQL Server implementation using
-// sqlite as the backing engine.
 //
 // In order to ensure portability we'll use modernc.org/sqlite instead
 // of github.com/mattn/go-sqlite3 because modernc is a translation of the
@@ -34,6 +32,8 @@
 // correctly (specifically pragma_table_info) in go 1.18+ so this
 // entire package is given the build constraint to only build when
 // using go1.18 or higher
+
+// Package experiments contains experimental code.
 package experiments
 
 import (

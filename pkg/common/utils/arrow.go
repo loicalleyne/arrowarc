@@ -27,6 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Package utils provides common utilities for ArrowArc.
 package utils
 
 import (

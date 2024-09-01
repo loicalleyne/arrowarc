@@ -27,6 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Package pipeline provides a data processing pipeline for Arrow records.
 package pipeline
 
 import (
@@ -36,11 +37,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"math"
 
 	"github.com/apache/arrow/go/v17/arrow"
 	interfaces "github.com/arrowarc/arrowarc/internal/interfaces"
@@ -141,8 +141,8 @@ func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 			cancel() // Cancel the context to stop all operations
 			return "", err
 		}
-	case <-errChan:
-		// All goroutines have finished without error
+	case err := <-errChan:
+		return "", fmt.Errorf("pipeline execution failed: %w", err)
 	case <-ctx.Done():
 		return "", ctx.Err()
 	case <-time.After(30 * time.Minute): // Adjust timeout as needed
@@ -160,21 +160,31 @@ func (dp *DataPipeline) Start(ctx context.Context) (string, error) {
 	return jsonReport, nil
 }
 
-func generateMetricsReport(metrics *Metrics) map[string]interface{} {
+type MetricsReport struct {
+	StartTime       string `json:"start_time"`
+	EndTime         string `json:"end_time"`
+	Records         string `json:"records"`
+	DataTransferred string `json:"data_transferred"`
+	Duration        string `json:"duration"`
+	RecordsPerSec   string `json:"records_per_second"`
+	TransferRate    string `json:"transfer_rate"`
+}
+
+func generateMetricsReport(metrics *Metrics) MetricsReport {
 	recordsProcessed := atomic.LoadInt64(&metrics.RecordsProcessed)
 	totalBytes := atomic.LoadInt64(&metrics.TotalBytes)
 	duration := time.Duration(atomic.LoadInt64(&metrics.TotalDuration))
 	throughput := float64(atomic.LoadInt64(&metrics.Throughput)) / 100
 	throughputBytes := atomic.LoadInt64(&metrics.ThroughputBytes)
 
-	return map[string]interface{}{
-		"StartTime":        metrics.StartTime.Format(time.RFC3339),
-		"EndTime":          time.Unix(0, atomic.LoadInt64(&metrics.endTimeUnix)).Format(time.RFC3339),
-		"RecordsProcessed": recordsProcessed,
-		"TotalBytes":       formatBytes(totalBytes),
-		"TotalDuration":    formatDuration(duration),
-		"Throughput":       formatThroughput(throughput),
-		"ThroughputBytes":  formatThroughputBytes(float64(throughputBytes)),
+	return MetricsReport{
+		StartTime:       metrics.StartTime.Format(time.RFC3339),
+		EndTime:         time.Unix(0, atomic.LoadInt64(&metrics.endTimeUnix)).Format(time.RFC3339),
+		Records:         formatLargeNumber(float64(recordsProcessed)), // Format records
+		DataTransferred: formatBytes(totalBytes),
+		Duration:        formatDuration(duration),
+		RecordsPerSec:   formatThroughput(throughput),
+		TransferRate:    formatThroughputBytes(float64(throughputBytes)),
 	}
 }
 
@@ -188,7 +198,7 @@ func formatBytes(bytes int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%s %cB", formatLargeNumber(float64(bytes)/float64(div)), "KMGTPE"[exp])
 }
 
 func formatDuration(d time.Duration) string {
@@ -196,7 +206,31 @@ func formatDuration(d time.Duration) string {
 }
 
 func formatThroughput(t float64) string {
-	return fmt.Sprintf("%.2f records/second", math.Round(t*100)/100)
+	return formatLargeNumber(t)
+}
+
+func formatLargeNumber(n float64) string {
+	parts := strings.Split(fmt.Sprintf("%.2f", n), ".")
+	intPart := parts[0]
+	decPart := parts[1]
+
+	var result []rune
+	for i, c := range reverse(intPart) {
+		if i > 0 && i%3 == 0 {
+			result = append(result, '_')
+		}
+		result = append(result, c)
+	}
+
+	return fmt.Sprintf("%s.%s", string(reverse(string(result))), decPart)
+}
+
+func reverse(s string) string {
+	runes := []rune(s)
+	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+		runes[i], runes[j] = runes[j], runes[i]
+	}
+	return string(runes)
 }
 
 func formatThroughputBytes(t float64) string {

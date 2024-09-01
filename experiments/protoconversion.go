@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"cloud.google.com/go/bigquery/storage/apiv1/storagepb"
+	"github.com/apache/arrow/go/v17/arrow"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -34,7 +36,7 @@ func convertModeToLabel(mode storagepb.TableFieldSchema_Mode, useProto3 bool) *d
 }
 
 // Allows conversion between BQ schema type and FieldDescriptorProto's type.
-var bqTypeToFieldTypeMap = map[storagepb.TableFieldSchema_Type]descriptorpb.FieldDescriptorProto_Type{
+var BqTypeToFieldTypeMap = map[storagepb.TableFieldSchema_Type]descriptorpb.FieldDescriptorProto_Type{
 	storagepb.TableFieldSchema_BIGNUMERIC: descriptorpb.FieldDescriptorProto_TYPE_BYTES,
 	storagepb.TableFieldSchema_BOOL:       descriptorpb.FieldDescriptorProto_TYPE_BOOL,
 	storagepb.TableFieldSchema_BYTES:      descriptorpb.FieldDescriptorProto_TYPE_BYTES,
@@ -418,7 +420,7 @@ func tableFieldSchemaToFieldDescriptorProto(field *storagepb.TableFieldSchema, i
 	} else {
 		// For (REQUIRED||REPEATED) fields for proto3, or all cases for proto2, we can use the expected scalar types.
 		if field.GetMode() != storagepb.TableFieldSchema_NULLABLE || !useProto3 {
-			outType := bqTypeToFieldTypeMap[field.GetType()]
+			outType := BqTypeToFieldTypeMap[field.GetType()]
 			fdp = &descriptorpb.FieldDescriptorProto{
 				Name:   proto.String(name),
 				Number: proto.Int32(idx),
@@ -656,4 +658,27 @@ func skipNormalization(fullName string) bool {
 		}
 	}
 	return false
+}
+
+// ArrowToProto converts an Arrow record batch to a slice of proto messages
+func ArrowToProto(batch arrow.Record, descriptor protoreflect.MessageDescriptor) ([][]byte, error) {
+	var protoMessages [][]byte
+
+	for i := 0; i < int(batch.NumRows()); i++ {
+		msg := dynamicpb.NewMessage(descriptor)
+
+		for j, col := range batch.Columns() {
+			field := descriptor.Fields().Get(j)
+			value := col.GetOneForMarshal(i)
+			msg.Set(field, protoreflect.ValueOf(value))
+		}
+
+		bytes, err := proto.Marshal(msg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal proto message: %w", err)
+		}
+		protoMessages = append(protoMessages, bytes)
+	}
+
+	return protoMessages, nil
 }
