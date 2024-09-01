@@ -27,6 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Package csv provides utilities for inferring the Arrow schema from a CSV file.
 package csv
 
 import (

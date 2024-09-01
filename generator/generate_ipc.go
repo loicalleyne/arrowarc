@@ -27,6 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Package generator provides utilities for generating test data in various formats.
 package generator
 
 import (

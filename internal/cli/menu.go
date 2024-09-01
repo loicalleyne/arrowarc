@@ -27,6 +27,7 @@
 // Acknowledgment appreciated but not required.
 // --------------------------------------------------------------------------------
 
+// Package cli provides command line interface utilities.
 package cli
 
 import (
