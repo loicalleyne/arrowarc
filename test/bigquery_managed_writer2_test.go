@@ -117,7 +117,6 @@ func TestAppends2(t *testing.T) {
 			t.Errorf("AppendToDefaultStream2(%q %q): %v", testDatasetID, testTableID, err)
 		}
 	})
-
 }
 
 // createArrowRecord creates a sample Arrow record that matches the BigQuery table schema.
