@@ -180,7 +180,7 @@ func (psr ProtobufMessageReflection) unmarshallAny() ProtobufMessageReflection {
 		for psr.rValue.Type().Kind() == reflect.Ptr {
 			psr.rValue = reflect.Indirect(psr.rValue)
 		}
-		fieldValueAsAny, _ := psr.rValue.Interface().(anypb.Any)
+		fieldValueAsAny, _ := psr.rValue.Addr().Interface().(*anypb.Any)
 		msg, _ := fieldValueAsAny.UnmarshalNew()
 
 		v := reflect.ValueOf(msg)

@@ -1,42 +1,23 @@
-*.class
-*.log
-.mtj.tmp/
+# Allowlisting gitignore template for GO projects prevents us
+# from adding various unwanted local files, such as generated
+# files, developer configurations or IDE-specific files etc.
+#
+# Recommended: Go.AllowList.gitignore
 
-# Package Files #
-*.jar
-*.war
-*.ear
-*.db
-hs_err_pid*
-.DS_Store
-```
+# Ignore everything
+*
 
-scrap/
+# But not these files...
+!/.gitignore
 
-src/
+!*.go
+!go.sum
+!go.mod
 
-.venv/
-.archive/
-data/
-logs/
-strategy.md
-setup_project.sh
-local/
-assets/diagrams/
-assets/docs/
-cmd/*.parquet
+!README.md
+!LICENSE
 
-scratch/
-.venv/
-assets/docs/
-assets/.DS_Store
-data/
-logs/
-scratch/
-pkg/common/config/secrets.go
-.env
-assets/keys/
-build.sh
-cdata/
-integrations/bigquery/experimental_managed_writer
+# !Makefile
 
+# ...even if they are in subdirectories
+!*/
