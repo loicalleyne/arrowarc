@@ -30,7 +30,7 @@
 package integrations
 
 import (
-	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow-go/v18/arrow"
 )
 
 // SingleRecordReader is a custom RecordReader that wraps a single arrow.Record.

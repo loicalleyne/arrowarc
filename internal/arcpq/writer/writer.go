@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/parquet-go/parquet-go"
 
 	"github.com/arrowarc/arrowarc/internal/arcpq/builder"

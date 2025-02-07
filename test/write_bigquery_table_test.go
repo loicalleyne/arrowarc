@@ -36,7 +36,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow-go/v18/arrow"
 	bigquery "github.com/arrowarc/arrowarc/integrations/bigquery"
 	arrdata "github.com/arrowarc/arrowarc/internal/arrdata"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"

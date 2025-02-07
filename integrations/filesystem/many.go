@@ -34,9 +34,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	duckdb "github.com/arrowarc/arrowarc/integrations/duckdb"
 	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 )

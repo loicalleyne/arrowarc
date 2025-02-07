@@ -35,7 +35,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/apache/arrow/go/v17/parquet/compress"
+	"github.com/apache/arrow-go/v18/parquet/compress"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
 	"github.com/arrowarc/arrowarc/pipeline"
 )

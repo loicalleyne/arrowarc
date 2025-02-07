@@ -35,9 +35,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/avro"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/avro"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	pool "github.com/arrowarc/arrowarc/internal/memory"
 )
 

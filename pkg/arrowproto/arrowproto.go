@@ -6,9 +6,9 @@ import (
 	"math"
 	"reflect"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	"golang.org/x/exp/constraints"
 	"google.golang.org/genproto/googleapis/type/date"

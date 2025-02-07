@@ -39,8 +39,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/apache/arrow/go/v17/arrow/flight"
-	"github.com/apache/arrow/go/v17/arrow/flight/flightsql"
+	"github.com/apache/arrow-go/v18/arrow/flight"
+	"github.com/apache/arrow-go/v18/arrow/flight/flightsql"
 	sqlite "github.com/arrowarc/arrowarc/integrations/flight/sqlite"
 	"github.com/docopt/docopt-go"
 	"google.golang.org/grpc"

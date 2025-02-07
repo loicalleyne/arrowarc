@@ -38,11 +38,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	"github.com/apache/arrow/go/v17/parquet/file"
-	"github.com/apache/arrow/go/v17/parquet/pqarrow"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	"github.com/apache/arrow-go/v18/parquet/file"
+	"github.com/apache/arrow-go/v18/parquet/pqarrow"
 	pool "github.com/arrowarc/arrowarc/internal/memory"
 )
 
@@ -54,7 +54,6 @@ type ParquetRows struct {
 	curRecord             arrow.Record         // Current Arrow record batch
 	curRowIndex           int                  // Current row index within the current batch
 	bufferSize            int                  // Size of the batch buffer
-	needNewBatch          bool                 // Indicates if a new batch is needed
 	useUnsafeStringReader bool                 // Flag for unsafe string reading
 	alloc                 memory.Allocator     // Arrow memory allocator
 	columns               []string             // Column names

@@ -20,8 +20,8 @@ import (
 	"io"
 	"sync/atomic"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/arrio"
 	"github.com/arrowarc/arrowarc/internal/debug"
 	"github.com/arrowarc/arrowarc/internal/dictutils"
 	"github.com/arrowarc/arrowarc/internal/json"
