@@ -8,41 +8,15 @@ import (
 	"fmt"
 	"slices"
 	"sort"
-	"strconv"
 	"sync"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/compute"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/compute"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/arrowarc/arrowarc/internal/arcpq/builder"
 )
-
-type Direction uint
-
-const (
-	Ascending Direction = iota
-	Descending
-)
-
-func (d Direction) comparison() int {
-	switch d {
-	case Ascending:
-		return -1
-	case Descending:
-		return 1
-	default:
-		panic("unexpected direction value " + strconv.Itoa(int(d)) + " only -1 and 1 are allowed")
-	}
-}
-
-// SortingColumn describes a sorting column on a arrow.Record.
-type SortingColumn struct {
-	Index      int
-	Direction  Direction
-	NullsFirst bool
-}
 
 // SortRecord sorts given arrow.Record by columns. Returns *array.Int32 of
 // indices to sorted rows or record r.
@@ -311,13 +285,9 @@ func (m *multiColSorter) Less(i, j int) bool {
 	for idx := range m.comparisons {
 		cmp := m.compare(idx, int(m.indices.Value(i)), int(m.indices.Value(j)))
 		if cmp != 0 {
-			// Use direction to reorder the comparison. Direction determines if the list
-			// is in ascending or descending.
-			//
-			// For instance if comparison between i,j value is -1 and direction is -1
-			// this will resolve to true hence the list will be in ascending order. Same
-			// principle applies for descending.
-			return cmp == m.directions[idx]
+			// If direction is ascending (1), we want cmp < 0 to return true
+			// If direction is descending (-1), we want cmp > 0 to return true
+			return (cmp * m.directions[idx]) < 0
 		}
 		// Try comparing the next column
 	}
@@ -330,28 +300,22 @@ func (m *multiColSorter) compare(idx, i, j int) int {
 		if x.IsNull(j) {
 			return 0
 		}
-		if m.directions[idx] == 1 {
-			if m.nullsFirst[idx] {
-				return 1
-			}
-			return -1
-		}
+		// For nullsFirst:
+		//   - In ascending: null is smaller (-1)
+		//   - In descending: null is larger (1)
 		if m.nullsFirst[idx] {
-			return -1
+			return -m.directions[idx]
 		}
-		return 1
+		return m.directions[idx]
 	}
 	if x.IsNull(j) {
-		if m.directions[idx] == 1 {
-			if m.nullsFirst[idx] {
-				return -1
-			}
-			return 1
-		}
+		// For nullsFirst:
+		//   - In ascending: non-null is larger (1)
+		//   - In descending: non-null is smaller (-1)
 		if m.nullsFirst[idx] {
-			return 1
+			return m.directions[idx]
 		}
-		return -1
+		return -m.directions[idx]
 	}
 	return x.Compare(i, j)
 }

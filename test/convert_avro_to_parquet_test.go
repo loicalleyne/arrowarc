@@ -36,7 +36,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow/go/v17/parquet/compress"
+	"github.com/apache/arrow-go/v18/parquet/compress"
 	convert "github.com/arrowarc/arrowarc/converter"
 	"github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/stretchr/testify/assert"

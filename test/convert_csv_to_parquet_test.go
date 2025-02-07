@@ -36,7 +36,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow-go/v18/arrow"
 	converter "github.com/arrowarc/arrowarc/converter"
 	"github.com/stretchr/testify/assert"
 )

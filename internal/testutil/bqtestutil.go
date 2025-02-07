@@ -1,4 +1,4 @@
-package experiments
+package testutil
 
 import (
 	"fmt"

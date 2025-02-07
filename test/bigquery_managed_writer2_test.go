@@ -8,10 +8,10 @@ import (
 
 	"cloud.google.com/go/bigquery"
 	"cloud.google.com/go/bigquery/storage/apiv1/storagepb"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
-	x "github.com/arrowarc/arrowarc/experiments"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+	x "github.com/arrowarc/arrowarc/internal/testutil"
 )
 
 func TestAppends2(t *testing.T) {
@@ -86,7 +86,7 @@ func TestAppends2(t *testing.T) {
 	}
 
 	t.Run("DefaultStream", func(t *testing.T) {
-		if err := x.AppendToDefaultStream2(io.Discard, projectID, testDatasetID, testTableID, arrowRecord, &storagepb.TableSchema{
+		if err := x.AppendToDefaultStream(io.Discard, projectID, testDatasetID, testTableID, arrowRecord, &storagepb.TableSchema{
 			Fields: []*storagepb.TableFieldSchema{
 				{Name: "bool_col", Type: storagepb.TableFieldSchema_BOOL},
 				{Name: "bytes_col", Type: storagepb.TableFieldSchema_BYTES},

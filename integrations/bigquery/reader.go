@@ -38,9 +38,9 @@ import (
 
 	bqStorage "cloud.google.com/go/bigquery/storage/apiv1"
 	storagepb "cloud.google.com/go/bigquery/storage/apiv1/storagepb"
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/ipc"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 	helper "github.com/arrowarc/arrowarc/pkg/common/utils"
 	"github.com/googleapis/gax-go/v2"

@@ -36,12 +36,11 @@ import (
 	"io"
 	"os"
 
-	"github.com/goccy/go-json"
-
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	pool "github.com/arrowarc/arrowarc/internal/memory"
+	"github.com/goccy/go-json"
 )
 
 // JSONReader reads records from a JSON file and implements the Reader interface.

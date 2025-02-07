@@ -36,8 +36,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/arrio"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/arrio"
 	integrations "github.com/arrowarc/arrowarc/integrations/filesystem"
 )
 

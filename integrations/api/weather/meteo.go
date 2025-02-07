@@ -38,9 +38,9 @@ import (
 
 	"github.com/goccy/go-json"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	memoryPool "github.com/arrowarc/arrowarc/internal/memory"
 	config "github.com/arrowarc/arrowarc/pkg/common/config"
 )

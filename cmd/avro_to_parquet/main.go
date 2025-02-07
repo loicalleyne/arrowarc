@@ -35,7 +35,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/apache/arrow/go/v17/parquet/compress"
+	"github.com/apache/arrow-go/v18/parquet/compress"
 	converter "github.com/arrowarc/arrowarc/converter"
 	"github.com/docopt/docopt-go"
 )

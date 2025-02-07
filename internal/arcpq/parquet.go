@@ -7,12 +7,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/apache/arrow/go/v17/arrow"
-	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/scalar"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/scalar"
 	"github.com/parquet-go/parquet-go"
 
-	"github.com/arrowarc/arrowarc/pkg/dynparquet"
+	"github.com/polarsignals/frostdb/dynparquet"
 )
 
 func ArrowScalarToParquetValue(sc scalar.Scalar) (parquet.Value, error) {

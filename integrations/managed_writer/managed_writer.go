@@ -1,4 +1,4 @@
-package experiments
+package managed_writer
 
 import (
 	"context"
@@ -7,12 +7,152 @@ import (
 	"math/rand"
 	"time"
 
+	bq "cloud.google.com/go/bigquery"
 	"cloud.google.com/go/bigquery/storage/apiv1/storagepb"
 	"cloud.google.com/go/bigquery/storage/managedwriter"
 	"cloud.google.com/go/bigquery/storage/managedwriter/adapt"
 	"github.com/GoogleCloudPlatform/golang-samples/bigquery/snippets/managedwriter/exampleproto"
+	arrow "github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/arrowarc/arrowarc/internal/memory"
+	"github.com/arrowarc/arrowarc/pkg/arrowproto"
 	"google.golang.org/protobuf/proto"
 )
+
+// AppendArrowRecordToBigQuery writes Arrow records to BigQuery using the managed writer.
+func AppendArrowRecordToBigQuery(w io.Writer, projectID, datasetID, tableID string, tableSchema *bq.Schema) (*managedwriter.AppendResult, error) {
+	ctx := context.Background()
+	// Instantiate a managedwriter client to handle interactions with the service.
+	client, err := managedwriter.NewClient(ctx, projectID,
+		managedwriter.WithMultiplexing(), // Enables connection sharing.
+	)
+	if err != nil {
+		return nil, fmt.Errorf("managedwriter.NewClient: %w", err)
+	}
+	// Close the client when we exit the function.
+	defer client.Close()
+
+	var m *exampleproto.SampleData
+	descriptorProto, err := adapt.NormalizeDescriptor(m.ProtoReflect().Descriptor())
+	if err != nil {
+		return nil, fmt.Errorf("NormalizeDescriptor: %w", err)
+	}
+
+	// Define the table reference
+	tableReference := managedwriter.TableParentFromParts(projectID, datasetID, tableID)
+
+	// Create a new managed stream for writing to BigQuery
+	managedStream, err := client.NewManagedStream(ctx,
+		managedwriter.WithType(managedwriter.DefaultStream),
+		managedwriter.WithDestinationTable(tableReference),
+		managedwriter.WithSchemaDescriptor(descriptorProto),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("NewManagedStream: %w", err)
+	}
+	defer managedStream.Close()
+
+	arrowRecords, err := generateDefaultArrowMessages(1)
+	if err != nil {
+		return nil, fmt.Errorf("generateDefaultArrowMessages: %w", err)
+	}
+
+	protoMessages, err := arrowproto.ConvertArrowRecordToProtoMessages(arrowRecords[0], descriptorProto)
+	if err != nil {
+		return nil, fmt.Errorf("ConvertArrowRecordToProtoMessages: %w", err)
+	}
+
+	// Serialize each Protobuf message into binary format
+	rows := make([][]byte, len(protoMessages))
+	for i, msg := range protoMessages {
+		b, err := proto.Marshal(msg)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling message %d: %w", i, err)
+		}
+		rows[i] = b
+	}
+	result, err := managedStream.AppendRows(ctx, rows)
+	if err != nil {
+		return nil, fmt.Errorf("AppendRows error: %w", err)
+	}
+	return result, nil
+}
+
+func generateDefaultArrowMessages(numMessages int) ([]arrow.Record, error) {
+	// Define the Arrow schema matching your example Protobuf message
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "bool_col", Type: arrow.FixedWidthTypes.Boolean},
+		{Name: "bytes_col", Type: arrow.BinaryTypes.Binary},
+		{Name: "float64_col", Type: arrow.PrimitiveTypes.Float64},
+		{Name: "int64_col", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "string_col", Type: arrow.BinaryTypes.String},
+		{Name: "date_col", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "datetime_col", Type: arrow.BinaryTypes.String},
+		{Name: "geography_col", Type: arrow.BinaryTypes.String},
+		{Name: "numeric_col", Type: arrow.BinaryTypes.String},
+		{Name: "bignumeric_col", Type: arrow.BinaryTypes.String},
+		{Name: "time_col", Type: arrow.BinaryTypes.String},
+		{Name: "timestamp_col", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "int64_list", Type: arrow.ListOf(arrow.PrimitiveTypes.Int64)},
+		{Name: "row_num", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "struct_col", Type: arrow.StructOf(
+			arrow.Field{Name: "sub_int_col", Type: arrow.PrimitiveTypes.Int64},
+		)},
+		{Name: "struct_list", Type: arrow.ListOf(arrow.StructOf(
+			arrow.Field{Name: "sub_int_col", Type: arrow.PrimitiveTypes.Int64},
+		))},
+	}, nil)
+
+	pool := memory.NewGoAllocator()
+	builder := array.NewRecordBuilder(pool, schema)
+	defer builder.Release()
+
+	// Generate random data for Arrow records
+	for i := 0; i < numMessages; i++ {
+		// Create random data corresponding to the schema
+		random := rand.New(rand.NewSource(time.Now().UnixNano()))
+		builder.Field(0).(*array.BooleanBuilder).Append(true)
+		builder.Field(1).(*array.BinaryBuilder).Append([]byte("some bytes"))
+		builder.Field(2).(*array.Float64Builder).Append(3.14)
+		builder.Field(3).(*array.Int64Builder).Append(123)
+		builder.Field(4).(*array.StringBuilder).Append("example string value")
+		builder.Field(5).(*array.Int32Builder).Append(int32(time.Now().UnixNano() / 86400000000000))
+		builder.Field(6).(*array.StringBuilder).Append("2022-01-01 12:13:14.000000")
+		builder.Field(7).(*array.StringBuilder).Append("POINT(-122.350220 47.649154)")
+		builder.Field(8).(*array.StringBuilder).Append("99999999999999999999999999999.999999999")
+		builder.Field(9).(*array.StringBuilder).Append("578960446186580977117854925043439539266.34992332820282019728792003956564819967")
+		builder.Field(10).(*array.StringBuilder).Append("12:13:14.000000")
+		builder.Field(11).(*array.Int64Builder).Append(time.Now().UnixNano() / 1000)
+
+		// Fill int64 list
+		listBuilder := builder.Field(12).(*array.ListBuilder)
+		listBuilder.Append(true)
+		int64Builder := listBuilder.ValueBuilder().(*array.Int64Builder)
+		int64Builder.AppendValues([]int64{2, 4, 6, 8}, nil)
+
+		builder.Field(13).(*array.Int64Builder).Append(23)
+
+		// Fill struct fields
+		structBuilder := builder.Field(14).(*array.StructBuilder)
+		structBuilder.Append(true)
+		structBuilder.FieldBuilder(0).(*array.Int64Builder).Append(random.Int63())
+
+		// Fill struct list
+		listStructBuilder := builder.Field(15).(*array.ListBuilder)
+		listStructBuilder.Append(true)
+		structListValueBuilder := listStructBuilder.ValueBuilder().(*array.StructBuilder)
+		for j := 0; j < int(random.Int63n(5)+1); j++ {
+			structListValueBuilder.Append(true)
+			structListValueBuilder.FieldBuilder(0).(*array.Int64Builder).Append(random.Int63())
+		}
+	}
+
+	// Create a single Arrow Record
+	record := builder.NewRecord()
+	defer record.Release()
+
+	return []arrow.Record{record}, nil
+}
 
 // generateExampleMessages generates a slice of serialized protobuf messages using a statically defined
 // and compiled protocol buffer file, and returns the binary serialized representation.

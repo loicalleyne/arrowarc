@@ -33,13 +33,17 @@ package csv
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
-	"github.com/apache/arrow/go/v17/arrow"
+	"github.com/apache/arrow-go/v18/arrow"
 )
 
 type CSVReadOptions struct {
@@ -47,144 +51,142 @@ type CSVReadOptions struct {
 	HasHeader        bool
 	StringsCanBeNull bool
 	NullValues       []string
+	ParseTimestamps  bool
+	TimestampFormat  string
 }
+
+type inferenceError struct {
+	Row    int
+	Column int
+	Err    error
+}
+
+func (e *inferenceError) Error() string {
+	return fmt.Sprintf("error at row %d, column %d: %v", e.Row, e.Column, e.Err)
+}
+
+const (
+	maxRowsToInfer = 1000
+	batchSize      = 100
+)
 
 // InferCSVArrowSchema infers the Arrow schema from a CSV file
 func InferCSVArrowSchema(ctx context.Context, filePath string, opts *CSVReadOptions) (*arrow.Schema, error) {
+	if err := validateOptions(opts); err != nil {
+		return nil, err
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open CSV file: %w", err)
 	}
-	defer file.Close()
+
+	done := make(chan struct{})
+	defer func() {
+		close(done)
+		file.Close()
+	}()
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			file.Close()
+		case <-done:
+		}
+	}()
 
 	reader := csv.NewReader(file)
 	reader.Comma = opts.Delimiter
 	reader.TrimLeadingSpace = true
 
-	// Read header if present
-	var headers []string
-	if opts.HasHeader {
-		headers, err = reader.Read()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read CSV header: %w", err)
-		}
-	} else {
-		firstRow, err := reader.Read()
-		if err != nil {
-			return nil, fmt.Errorf("failed to read first row: %w", err)
-		}
-		for i := range firstRow {
-			headers = append(headers, fmt.Sprintf("field%d", i+1))
-		}
+	headers, err := readHeaders(reader, opts)
+	if err != nil {
+		return nil, err
 	}
 
 	columnTypes := make([]arrow.DataType, len(headers))
 	columnNullability := make([]bool, len(headers))
-	rows := 0
 
-	// Use a channel to process rows in parallel
-	rowChannel := make(chan []string)
+	rowChannel := make(chan []string, batchSize)
+	errChan := make(chan *inferenceError, runtime.NumCPU())
+
 	var wg sync.WaitGroup
-	mu := sync.Mutex{}
+	numWorkers := runtime.NumCPU()
 
-	// Worker to process rows
-	for i := 0; i < 4; i++ { // Use 4 goroutines for parallelism
+	// Start workers
+	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for row := range rowChannel {
-				for colIndex, value := range row {
-					mu.Lock()
-					columnTypes[colIndex] = inferColumnType(columnTypes[colIndex], value, opts)
-					if isNullValue(value, opts.NullValues) {
-						columnNullability[colIndex] = true
-					}
-					mu.Unlock()
-				}
-			}
-		}()
+		go processRows(rowChannel, columnTypes, columnNullability, opts, &wg, errChan)
 	}
 
-	// Read up to 1000 rows
-	for rows < 1000 {
-		row, err := reader.Read()
-		if err != nil {
-			break // EOF or other error
+	// Read and process rows
+	rowCount := 0
+	for rowCount < maxRowsToInfer {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			row, err := reader.Read()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return nil, fmt.Errorf("error reading CSV row: %w", err)
+			}
+			rowChannel <- row
+			rowCount++
 		}
-		rowChannel <- row
-		rows++
 	}
 
 	close(rowChannel)
 	wg.Wait()
 
-	// Build Arrow schema from inferred data types
-	fields := make([]arrow.Field, len(headers))
-	for i, name := range headers {
-		// Default to String type if no type has been inferred
-		if columnTypes[i] == nil {
-			columnTypes[i] = arrow.BinaryTypes.String
-		}
-		fields[i] = arrow.Field{Name: name, Type: columnTypes[i], Nullable: columnNullability[i]}
+	// Check for errors
+	select {
+	case err := <-errChan:
+		return nil, err
+	default:
 	}
 
-	return arrow.NewSchema(fields, nil), nil
+	return buildSchema(headers, columnTypes, columnNullability, opts), nil
 }
 
 // inferColumnType detects the type of a given column based on the observed value
-func inferColumnType(currentType arrow.DataType, value string, opts *CSVReadOptions) arrow.DataType {
-	if isNullValue(value, opts.NullValues) {
-		return currentType
+func inferColumnType(current arrow.DataType, value string, opts *CSVReadOptions) arrow.DataType {
+	// Early exit if already string type or empty value
+	if current == arrow.BinaryTypes.String || isNullValue(value, opts.NullValues) {
+		return current
 	}
 
-	// Attempt to parse the value as different data types
-	if _, err := strconv.Atoi(value); err == nil {
-		if currentType == nil || currentType.ID() == arrow.STRING {
+	// Try parsing in order of specificity
+	if current == nil || current == arrow.PrimitiveTypes.Int64 {
+		if _, err := strconv.ParseInt(value, 10, 64); err == nil {
 			return arrow.PrimitiveTypes.Int64
 		}
 	}
 
-	if _, err := strconv.ParseInt(value, 10, 64); err == nil {
-		if currentType == nil || currentType.ID() == arrow.STRING {
-			return arrow.PrimitiveTypes.Int64
-		}
-	}
-
-	if _, err := strconv.ParseUint(value, 10, 64); err == nil {
-		if currentType == nil || currentType.ID() == arrow.STRING {
-			return arrow.PrimitiveTypes.Uint64
-		}
-	}
-
-	if _, err := strconv.ParseFloat(value, 64); err == nil {
-		if currentType == nil || currentType.ID() == arrow.STRING || currentType.ID() == arrow.PrimitiveTypes.Int64.ID() {
+	if current == nil || current == arrow.PrimitiveTypes.Float64 || current == arrow.PrimitiveTypes.Int64 {
+		if _, err := strconv.ParseFloat(value, 64); err == nil {
 			return arrow.PrimitiveTypes.Float64
 		}
 	}
 
-	if _, err := parseDate(value); err == nil {
-		if currentType == nil || currentType.ID() == arrow.STRING {
-			return arrow.FixedWidthTypes.Date32
-		}
-	}
-
-	if _, err := parseTimestamp(value); err == nil {
-		if currentType == nil || currentType.ID() == arrow.STRING {
-			return arrow.FixedWidthTypes.Timestamp_ms
-		}
-	}
-
-	if value == "true" || value == "false" {
-		if currentType == nil || currentType.ID() == arrow.STRING {
+	if current == nil || current == arrow.FixedWidthTypes.Boolean {
+		lower := strings.ToLower(value)
+		if lower == "true" || lower == "false" || lower == "1" || lower == "0" {
 			return arrow.FixedWidthTypes.Boolean
 		}
 	}
 
-	if currentType == nil {
-		currentType = arrow.BinaryTypes.String
+	// Try parsing as timestamp if configured
+	if opts.ParseTimestamps {
+		if _, err := time.Parse(opts.TimestampFormat, value); err == nil {
+			return arrow.FixedWidthTypes.Timestamp_us
+		}
 	}
 
-	return currentType
+	// Default to string
+	return arrow.BinaryTypes.String
 }
 
 // Helper functions for type detection
@@ -215,4 +217,70 @@ func isNullValue(value string, nullValues []string) bool {
 		}
 	}
 	return false
+}
+
+// Add options validation
+func validateOptions(opts *CSVReadOptions) error {
+	if opts == nil {
+		return errors.New("CSV read options cannot be nil")
+	}
+	if opts.Delimiter == 0 {
+		opts.Delimiter = ','
+	}
+	if opts.NullValues == nil {
+		opts.NullValues = []string{"", "NULL", "null", "NA", "na"}
+	}
+	return nil
+}
+
+// Add metadata to schema
+func buildSchema(headers []string, types []arrow.DataType, nullability []bool, opts *CSVReadOptions) *arrow.Schema {
+	fields := make([]arrow.Field, len(headers))
+	for i, name := range headers {
+		fields[i] = arrow.Field{
+			Name:     name,
+			Type:     types[i],
+			Nullable: nullability[i],
+			Metadata: arrow.MetadataFrom(map[string]string{
+				"original_index": strconv.Itoa(i),
+				"inferred_from":  "csv",
+			}),
+		}
+	}
+
+	metadata := arrow.MetadataFrom(map[string]string{
+		"delimiter":   string(opts.Delimiter),
+		"has_header":  strconv.FormatBool(opts.HasHeader),
+		"inferred_at": time.Now().UTC().Format(time.RFC3339),
+	})
+	return arrow.NewSchema(fields, &metadata)
+}
+
+func processRows(rowChan chan []string, types []arrow.DataType, nullability []bool, opts *CSVReadOptions, wg *sync.WaitGroup, errChan chan *inferenceError) {
+	defer wg.Done()
+
+	for row := range rowChan {
+		for colIndex, value := range row {
+			types[colIndex] = inferColumnType(types[colIndex], value, opts)
+			if isNullValue(value, opts.NullValues) {
+				nullability[colIndex] = true
+			}
+		}
+	}
+}
+
+func readHeaders(reader *csv.Reader, opts *CSVReadOptions) ([]string, error) {
+	headers, err := reader.Read()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read headers: %w", err)
+	}
+
+	if !opts.HasHeader {
+		// Generate default headers (col0, col1, etc.)
+		for i := range headers {
+			headers[i] = fmt.Sprintf("col%d", i)
+		}
+	}
+
+	return headers, nil
 }

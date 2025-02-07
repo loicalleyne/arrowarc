@@ -34,8 +34,8 @@ import (
 	"log"
 	"time"
 
-	pq "github.com/apache/arrow/go/v17/parquet"
-	"github.com/apache/arrow/go/v17/parquet/compress"
+	pq "github.com/apache/arrow-go/v18/parquet"
+	"github.com/apache/arrow-go/v18/parquet/compress"
 	parquet "github.com/arrowarc/arrowarc/pkg/parquet"
 	"github.com/docopt/docopt-go"
 )
